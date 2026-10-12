@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "241419984087",
+    "project_id": "peer-path-2d09f",
+    "storage_bucket": "peer-path-2d09f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:241419984087:android:f0c139d5162af7e0082492",
+        "android_client_info": {
+          "package_name": "com.example.peerpath"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYDdyBZW265nP13d5fI2hcbPGVbgUI9tc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

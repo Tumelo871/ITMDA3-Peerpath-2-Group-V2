@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Your existing PeerPath palette (unchanged) -->
+    <color name="peer_blue">#0D5BE1</color>
+    <color name="peer_dark_blue">#082B6F</color>
+    <color name="peer_navy">#061F52</color>
+
+    <color name="peer_light_blue">#EAF3FF</color>
+    <color name="peer_background">#F7FAFF</color>
+
+    <color name="peer_gold">#F4B400</color>
+
+    <color name="white">#FFFFFF</color>
+
+    <color name="text_primary">#14213D</color>
+    <color name="text_secondary">#718096</color>
+
+    <!-- Added: required by the updated activities -->
+    <color name="success">#2E9E5B</color>
+    <color name="danger">#D64545</color>
+    <color name="peer_yellow">#F4B400</color>
+    <color name="black">#000000</color>
+    <color name="chat_bubble_received">#E9F0FA</color>
+
+</resources>

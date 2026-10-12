@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/peer_background">
+
+    <!-- Decorative blue shape at top-right -->
+
+    <View
+        android:layout_width="160dp"
+        android:layout_height="160dp"
+        android:alpha="0.12"
+        android:background="@drawable/bg_top_blue"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- PEERPATH LOGO -->
+
+    <ImageView
+        android:id="@+id/imgSplashLogo"
+        android:layout_width="280dp"
+        android:layout_height="280dp"
+        android:contentDescription="PeerPath Logo"
+        android:scaleType="fitCenter"
+        android:src="@drawable/peerpath_logo"
+        app:layout_constraintBottom_toTopOf="@id/tvJourney"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.42" />
+
+    <!-- JOURNEY TEXT -->
+
+    <TextView
+        android:id="@+id/tvJourney"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="Your Learning&#10;Journey Together"
+        android:textColor="@color/peer_navy"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/imgSplashLogo" />
+
+    <!-- DESCRIPTION -->
+
+    <TextView
+        android:id="@+id/tvSplashDescription"
+        android:layout_width="300dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:text="Access resources, get support,&#10;and achieve your goals."
+        android:textColor="@color/text_secondary"
+        android:textSize="17sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvJourney" />
+
+    <!-- LOADING BAR -->
+
+    <ProgressBar
+        android:id="@+id/splashProgress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="330dp"
+        android:layout_height="8dp"
+        android:layout_marginBottom="10dp"
+        android:indeterminate="false"
+        android:max="100"
+        android:progress="0"
+        android:progressTint="@color/peer_blue"
+        android:backgroundTint="#D9E8FA"
+        app:layout_constraintBottom_toTopOf="@id/tvLoading"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- LOADING TEXT -->
+
+    <TextView
+        android:id="@+id/tvLoading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="90dp"
+        android:text="Loading..."
+        android:textColor="@color/text_secondary"
+        android:textSize="15sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- BOTTOM BLUE AREA -->
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="110dp"
+        android:background="@drawable/bg_bottom_blue"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

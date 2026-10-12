@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">PeerPath</string>
+
+    <string name="leaderboard_back">Back</string>
+    <string name="leaderboard_title">Leaderboard</string>
+    <string name="leaderboard_heading">Learning champions 🏆</string>
+    <string name="leaderboard_subtitle">Earn XP, stay consistent, and climb the rankings.</string>
+    <string name="leaderboard_your_position">Your position will appear here</string>
+    <string name="leaderboard_loading">Loading leaderboard...</string>
+
+</resources>
