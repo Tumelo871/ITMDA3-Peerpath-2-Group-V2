@@ -2,6 +2,7 @@ package com.example.peerpath.supabase;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.ContentResolver;
 import android.net.Uri;
 
 import androidx.annotation.Nullable;
@@ -28,25 +29,23 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 /**
- * PeerPath Supabase REST API.
+ * Supabase REST/Auth helper for PeerPath.
  *
- * This class handles:
- *
- * Authentication
- * Profiles
- * Tutors
- * Tutor applications
- * Sessions
- * Messages
- * Notifications
- * Learning materials/resources
- * Storage uploads
+ * Uses the public publishable key and the signed-in user's access token.
+ * Never put a service-role/secret key in an Android application.
  */
 public final class SupabaseApi {
+    private static final MediaType JSON =
+            MediaType.parse("application/json; charset=utf-8");
+    private static final OkHttpClient HTTP = new OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build();
 
-    // =========================================================
-    // CALLBACKS
-    // =========================================================
+    private static volatile SharedPreferences prefs;
+
+    private SupabaseApi() {}
 
     public interface JsonCallback {
         void onSuccess(JSONArray data);
@@ -63,1944 +62,963 @@ public final class SupabaseApi {
         void onError(String message);
     }
 
-    // =========================================================
-    // HTTP
-    // =========================================================
-
-    private static final MediaType JSON =
-            MediaType.parse("application/json; charset=utf-8");
-
-    private static final OkHttpClient HTTP =
-            new OkHttpClient.Builder()
-                    .connectTimeout(20, TimeUnit.SECONDS)
-                    .readTimeout(30, TimeUnit.SECONDS)
-                    .writeTimeout(30, TimeUnit.SECONDS)
-                    .build();
-
-    // =========================================================
-    // SESSION
-    // =========================================================
-
-    private static SharedPreferences prefs;
-
-    private SupabaseApi() {
-    }
-
-    /**
-     * Call this once when the application starts.
-     */
     public static void init(Context context) {
-
-        if (context == null) {
-            return;
+        if (context != null) {
+            prefs = context.getApplicationContext().getSharedPreferences(
+                    "supabase_session", Context.MODE_PRIVATE);
         }
-
-        prefs = context
-                .getApplicationContext()
-                .getSharedPreferences(
-                        "supabase_session",
-                        Context.MODE_PRIVATE
-                );
     }
 
-    // =========================================================
-    // CONFIG
-    // =========================================================
 
     public static boolean isConfigured() {
+        String url = SupabaseConfig.URL;
+        String key = SupabaseConfig.PUBLISHABLE_KEY;
+        if (blank(url) || blank(key)) return false;
 
-        if (SupabaseConfig.URL == null) {
-            return false;
-        }
-
-        if (SupabaseConfig.PUBLISHABLE_KEY == null) {
-            return false;
-        }
-
-        return SupabaseConfig.URL.startsWith("https://")
-                && !SupabaseConfig.URL.contains("YOUR_PROJECT_REF")
-                && !SupabaseConfig.PUBLISHABLE_KEY
-                .contains("YOUR_SUPABASE_PUBLISHABLE_KEY");
+        url = url.trim();
+        key = key.trim();
+        android.net.Uri parsed = android.net.Uri.parse(url);
+        boolean validUrl = "https".equalsIgnoreCase(parsed.getScheme())
+                && parsed.getHost() != null
+                && !parsed.getHost().trim().isEmpty()
+                && parsed.getUserInfo() == null;
+        boolean placeholder = key.contains("PASTE_YOUR")
+                || key.contains("YOUR_SUPABASE")
+                || key.equals("[REDACTED]")
+                || key.toLowerCase(java.util.Locale.ROOT).contains("placeholder");
+        // Supabase publishable keys use sb_publishable_. Legacy anon JWT keys begin eyJ.
+        boolean plausibleKey = key.startsWith("sb_publishable_") || key.startsWith("eyJ");
+        return validUrl && plausibleKey && !placeholder;
     }
 
-    // =========================================================
-    // SESSION HELPERS
-    // =========================================================
 
     public static String token() {
-
-        if (prefs == null) {
-            return null;
-        }
-
-        return prefs.getString(
-                "access_token",
-                null
-        );
+        SharedPreferences p = prefs;
+        return p == null ? null : p.getString("access_token", null);
     }
 
     public static String userId() {
-
-        if (prefs == null) {
-            return null;
-        }
-
-        return prefs.getString(
-                "user_id",
-                null
-        );
+        SharedPreferences p = prefs;
+        return p == null ? null : p.getString("user_id", null);
     }
 
     public static String userEmail() {
-
-        if (prefs == null) {
-            return null;
-        }
-
-        return prefs.getString(
-                "email",
-                null
-        );
+        SharedPreferences p = prefs;
+        return p == null ? null : p.getString("email", null);
     }
 
     public static boolean isLoggedIn() {
-
-        String token = token();
-        String id = userId();
-
-        return token != null
-                && !token.trim().isEmpty()
-                && id != null
-                && !id.trim().isEmpty();
+        String t = token(), id = userId();
+        return t != null && !t.trim().isEmpty()
+                && id != null && !id.trim().isEmpty();
     }
 
     public static void clearSession() {
-
-        if (prefs != null) {
-            prefs.edit()
-                    .clear()
-                    .apply();
-        }
+        SharedPreferences p = prefs;
+        if (p != null) p.edit().clear().apply();
     }
 
-    // =========================================================
-    // AUTH - SIGN UP
-    // =========================================================
+    // -------------------- Authentication --------------------
 
-    public static void signUp(
-            String email,
-            String password,
-            JSONObject metadata,
-            ObjectCallback callback
-    ) {
-
-        if (!isConfigured()) {
-            callback.onError(
-                    "Supabase is not configured."
-            );
-            return;
-        }
-
+    public static void signUp(String email, String password,
+                              JSONObject metadata, ObjectCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
         if (email == null || email.trim().isEmpty()) {
-            callback.onError(
-                    "Email is required."
-            );
-            return;
+            callback.onError("Email is required."); return;
         }
-
         if (password == null || password.length() < 6) {
-            callback.onError(
-                    "Password must contain at least 6 characters."
-            );
-            return;
+            callback.onError("Password must contain at least 6 characters."); return;
         }
 
         JSONObject body = new JSONObject();
-
         try {
-
-            body.put(
-                    "email",
-                    email.trim()
-            );
-
-            body.put(
-                    "password",
-                    password
-            );
-
-            body.put(
-                    "data",
-                    metadata == null
-                            ? new JSONObject()
-                            : metadata
-            );
-
+            body.put("email", email.trim());
+            body.put("password", password);
+            body.put("data", metadata == null ? new JSONObject() : metadata);
         } catch (JSONException e) {
-
-            callback.onError(
-                    errorMessage(e)
-            );
-
-            return;
+            callback.onError(e.getMessage()); return;
         }
 
-        Request request =
-                new Request.Builder()
-                        .url(
-                                SupabaseConfig.URL
-                                        + "/auth/v1/signup"
-                        )
-                        .addHeader(
-                                "apikey",
-                                SupabaseConfig.PUBLISHABLE_KEY
-                        )
-                        .addHeader(
-                                "Content-Type",
-                                "application/json"
-                        )
-                        .post(
-                                RequestBody.create(
-                                        body.toString(),
-                                        JSON
-                                )
-                        )
-                        .build();
-
-        executeObject(
-                request,
-                callback
-        );
+        Request request = baseRequest(SupabaseConfig.URL.trim() + "/auth/v1/signup")
+                .post(RequestBody.create(body.toString(), JSON)).build();
+        executeObject(request, callback);
     }
 
-    // =========================================================
-    // AUTH - SIGN IN
-    // =========================================================
-
-    public static void signIn(
-            String email,
-            String password,
-            ObjectCallback callback
-    ) {
-
-        if (!isConfigured()) {
-            callback.onError(
-                    "Supabase is not configured."
-            );
-            return;
+    public static void signIn(String email, String password, ObjectCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (email == null || email.trim().isEmpty()
+                || password == null || password.isEmpty()) {
+            callback.onError("Enter your email and password."); return;
         }
 
         JSONObject body = new JSONObject();
-
         try {
-
-            body.put(
-                    "email",
-                    email.trim()
-            );
-
-            body.put(
-                    "password",
-                    password
-            );
-
+            body.put("email", email.trim());
+            body.put("password", password);
         } catch (JSONException e) {
-
-            callback.onError(
-                    errorMessage(e)
-            );
-
-            return;
+            callback.onError(e.getMessage()); return;
         }
 
-        Request request =
-                new Request.Builder()
-                        .url(
-                                SupabaseConfig.URL
-                                        + "/auth/v1/token?grant_type=password"
-                        )
-                        .addHeader(
-                                "apikey",
-                                SupabaseConfig.PUBLISHABLE_KEY
-                        )
-                        .addHeader(
-                                "Content-Type",
-                                "application/json"
-                        )
-                        .post(
-                                RequestBody.create(
-                                        body.toString(),
-                                        JSON
-                                )
-                        )
-                        .build();
+        Request request = baseRequest(SupabaseConfig.URL.trim()
+                + "/auth/v1/token?grant_type=password")
+                .post(RequestBody.create(body.toString(), JSON)).build();
 
-        executeObject(
-                request,
-                new ObjectCallback() {
+        executeObject(request, new ObjectCallback() {
+            @Override public void onSuccess(JSONObject data) {
+                JSONObject user = data.optJSONObject("user");
+                String access = data.optString("access_token", "");
+                String refresh = data.optString("refresh_token", "");
+                if (user == null || access.trim().isEmpty() || refresh.trim().isEmpty()
+                        || user.optString("id", "").trim().isEmpty()) {
+                    callback.onError("Supabase did not return a complete login session.");
+                    return;
+                }
+                SharedPreferences p = prefs;
+                if (p == null) {
+                    callback.onError("Session storage is not initialized. Please restart the app.");
+                    return;
+                }
+                p.edit()
+                        .putString("access_token", access)
+                        .putString("refresh_token", refresh)
+                        .putString("user_id", user.optString("id"))
+                        .putString("email", user.optString("email", email.trim()))
+                        .apply();
+                callback.onSuccess(data);
+            }
+            @Override public void onError(String message) { callback.onError(message); }
+        });
+    }
 
-                    @Override
-                    public void onSuccess(
-                            JSONObject data
-                    ) {
+    public static void resetPassword(String email, EmptyCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (email == null || email.trim().isEmpty()) {
+            callback.onError("Email is required."); return;
+        }
+        JSONObject body = new JSONObject();
+        try { body.put("email", email.trim()); }
+        catch (JSONException e) { callback.onError(e.getMessage()); return; }
 
-                        try {
+        Request request = baseRequest(SupabaseConfig.URL.trim() + "/auth/v1/recover")
+                .post(RequestBody.create(body.toString(), JSON)).build();
+        executeEmpty(request, callback);
+    }
 
-                            String accessToken =
-                                    data.optString(
-                                            "access_token",
-                                            ""
-                                    );
+    // -------------------- Profiles and tutors --------------------
 
-                            String refreshToken =
-                                    data.optString(
-                                            "refresh_token",
-                                            ""
-                                    );
+    public static void getProfile(String id, ObjectCallback callback) {
+        if (callback == null) return;
+        if (blank(id)) { callback.onError("User ID is missing."); return; }
+        dbGet("profiles", "id=eq." + encode(id) + "&select=*", new JsonCallback() {
+            @Override public void onSuccess(JSONArray data) {
+                JSONObject profile = data == null ? null : data.optJSONObject(0);
+                if (profile == null) callback.onError("Profile not found.");
+                else callback.onSuccess(profile);
+            }
+            @Override public void onError(String message) { callback.onError(message); }
+        });
+    }
 
-                            JSONObject user =
-                                    data.optJSONObject(
-                                            "user"
-                                    );
+    /**
+     * Loads a tutor profile by ID and confirms that it is a verified tutor.
+     * The returned profile is real data from the profiles table.
+     */
+    public static void getTutorProfile(String tutorId, ObjectCallback callback) {
+        if (callback == null) return;
+        if (blank(tutorId)) {
+            callback.onError("Tutor ID is missing.");
+            return;
+        }
+        getProfile(tutorId, new ObjectCallback() {
+            @Override public void onSuccess(JSONObject profile) {
+                String role = profile.optString("role", "");
+                String verification = profile.optString("verification_status", "");
+                if (!"tutor".equalsIgnoreCase(role)
+                        || !"verified".equalsIgnoreCase(verification)) {
+                    callback.onError("This profile is not a verified tutor.");
+                    return;
+                }
+                callback.onSuccess(profile);
+            }
+            @Override public void onError(String message) {
+                callback.onError(message);
+            }
+        });
+    }
 
-                            if (
-                                    accessToken.isEmpty()
-                                            || user == null
-                            ) {
+    public static void updateProfile(JSONObject values, EmptyCallback callback) {
+        if (callback == null) return;
+        if (values == null || values.length() == 0) {
+            callback.onError("Profile data is missing.");
+            return;
+        }
+        String id = userId();
+        if (blank(id)) {
+            callback.onError("You are not logged in.");
+            return;
+        }
+        dbPatch("profiles", "id=eq." + encode(id), values, callback);
+    }
 
-                                callback.onError(
-                                        "Supabase did not return a valid login session."
-                                );
+    public static void getVerifiedTutors(@Nullable String search, JsonCallback callback) {
+        String query = "role=eq.tutor&verification_status=eq.verified&select=*&order=full_name.asc";
+        if (!blank(search)) {
+            String value = encodeLike(search.trim());
+            query = "role=eq.tutor&verification_status=eq.verified"
+                    + "&or=(full_name.ilike.*" + value + "*,module_codes.ilike.*"
+                    + value + "*,tutor_subject.ilike.*" + value + "*)"
+                    + "&select=*&order=full_name.asc";
+        }
+        dbGet("profiles", query, callback);
+    }
 
-                                return;
-                            }
+    // -------------------- Sessions --------------------
 
-                            String id =
-                                    user.optString(
-                                            "id",
-                                            ""
-                                    );
+    public static void createSession(String tutorId, String subject, String date,
+                                     String time, String message, EmptyCallback callback) {
+        if (blank(userId())) { callback.onError("Please sign in before requesting a session."); return; }
+        if (blank(tutorId) || blank(subject) || blank(date) || blank(time)) {
+            callback.onError("Tutor, subject, date and time are required."); return;
+        }
+        if (tutorId.equals(userId())) {
+            callback.onError("You cannot book a session with your own profile."); return;
+        }
+        JSONObject row = new JSONObject();
+        try {
+            row.put("learner_id", userId());
+            row.put("tutor_id", tutorId);
+            row.put("subject", subject.trim());
+            row.put("session_date", date.trim());
+            row.put("session_time", time.trim());
+            row.put("learner_message", message == null ? "" : message.trim());
+            row.put("status", "pending");
+        } catch (JSONException e) { callback.onError(e.getMessage()); return; }
+        dbPost("sessions", row, callback);
+    }
 
-                            String userEmail =
-                                    user.optString(
-                                            "email",
-                                            email
-                                    );
-
-                            if (prefs == null) {
-
-                                callback.onError(
-                                        "Supabase session has not been initialized."
-                                );
-
-                                return;
-                            }
-
-                            prefs.edit()
-                                    .putString(
-                                            "access_token",
-                                            accessToken
-                                    )
-                                    .putString(
-                                            "refresh_token",
-                                            refreshToken
-                                    )
-                                    .putString(
-                                            "user_id",
-                                            id
-                                    )
-                                    .putString(
-                                            "email",
-                                            userEmail
-                                    )
-                                    .apply();
-
-                            callback.onSuccess(
-                                    data
-                            );
-
-                        } catch (Exception e) {
-
-                            callback.onError(
-                                    errorMessage(e)
-                            );
-                        }
-                    }
-
-                    @Override
-                    public void onError(
-                            String message
-                    ) {
-
-                        callback.onError(
-                                message
-                        );
+    /**
+     * Requests a session with a verified tutor. This rechecks the tutor profile
+     * before inserting the pending booking request.
+     */
+    public static void requestTutorSession(String tutorId, String subject,
+                                           String date, String time, String message,
+                                           EmptyCallback callback) {
+        if (callback == null) return;
+        getTutorProfile(tutorId, new ObjectCallback() {
+            @Override public void onSuccess(JSONObject profile) {
+                String verifiedSubject = subject;
+                if (blank(verifiedSubject)) {
+                    verifiedSubject = profile.optString("tutor_subject", "");
+                    if (blank(verifiedSubject)) {
+                        verifiedSubject = profile.optString("module_codes", "");
                     }
                 }
-        );
-    }
-
-    // =========================================================
-    // PASSWORD RESET
-    // =========================================================
-
-    public static void resetPassword(
-            String email,
-            EmptyCallback callback
-    ) {
-
-        JSONObject body = new JSONObject();
-
-        try {
-
-            body.put(
-                    "email",
-                    email.trim()
-            );
-
-        } catch (JSONException e) {
-
-            callback.onError(
-                    errorMessage(e)
-            );
-
-            return;
-        }
-
-        Request request =
-                new Request.Builder()
-                        .url(
-                                SupabaseConfig.URL
-                                        + "/auth/v1/recover"
-                        )
-                        .addHeader(
-                                "apikey",
-                                SupabaseConfig.PUBLISHABLE_KEY
-                        )
-                        .addHeader(
-                                "Content-Type",
-                                "application/json"
-                        )
-                        .post(
-                                RequestBody.create(
-                                        body.toString(),
-                                        JSON
-                                )
-                        )
-                        .build();
-
-        executeEmpty(
-                request,
-                callback
-        );
-    }
-
-    // =========================================================
-    // PROFILE
-    // =========================================================
-
-    public static void getProfile(
-            String id,
-            ObjectCallback callback
-    ) {
-
-        if (id == null || id.trim().isEmpty()) {
-
-            callback.onError(
-                    "User ID is missing."
-            );
-
-            return;
-        }
-
-        dbGet(
-                "profiles",
-                "id=eq."
-                        + encode(id)
-                        + "&select=*",
-                new JsonCallback() {
-
-                    @Override
-                    public void onSuccess(
-                            JSONArray data
-                    ) {
-
-                        if (
-                                data == null
-                                        || data.length() == 0
-                        ) {
-
-                            callback.onError(
-                                    "Profile not found."
-                            );
-
-                            return;
-                        }
-
-                        JSONObject profile =
-                                data.optJSONObject(0);
-
-                        if (profile == null) {
-
-                            callback.onError(
-                                    "Invalid profile returned."
-                            );
-
-                            return;
-                        }
-
-                        callback.onSuccess(
-                                profile
-                        );
-                    }
-
-                    @Override
-                    public void onError(
-                            String message
-                    ) {
-
-                        callback.onError(
-                                message
-                        );
-                    }
+                if (blank(verifiedSubject)) {
+                    callback.onError("Please choose or enter a subject for this session.");
+                    return;
                 }
-        );
+                createSession(tutorId, verifiedSubject, date, time, message, callback);
+            }
+            @Override public void onError(String error) {
+                callback.onError(error);
+            }
+        });
     }
 
-    public static void updateProfile(
-            JSONObject values,
-            EmptyCallback callback
-    ) {
-
+    public static void getMySessions(JsonCallback callback) {
         String id = userId();
-
-        if (
-                id == null
-                        || id.trim().isEmpty()
-        ) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        dbPatch(
-                "profiles",
-                "id=eq." + encode(id),
-                values,
-                callback
-        );
+        if (blank(id)) { callback.onError("You are not logged in."); return; }
+        dbGet("sessions", "or=(learner_id.eq." + encode(id) + ",tutor_id.eq." + encode(id)
+                + ")&select=*&order=created_at.desc", callback);
     }
 
-    // =========================================================
-    // VERIFIED TUTORS
-    // =========================================================
-
-    public static void getVerifiedTutors(
-            @Nullable String search,
-            JsonCallback callback
-    ) {
-
-        String query =
-                "role=eq.tutor"
-                        + "&verification_status=eq.verified"
-                        + "&select=*"
-                        + "&order=full_name.asc";
-
-        if (
-                search != null
-                        && !search.trim().isEmpty()
-        ) {
-
-            String value =
-                    encodeLike(
-                            search.trim()
-                    );
-
-            query =
-                    "role=eq.tutor"
-                            + "&verification_status=eq.verified"
-                            + "&or=("
-                            + "full_name.ilike.*"
-                            + value
-                            + "*,"
-                            + "module_codes.ilike.*"
-                            + value
-                            + "*,"
-                            + "tutor_subject.ilike.*"
-                            + value
-                            + "*)"
-                            + "&select=*"
-                            + "&order=full_name.asc";
-        }
-
-        dbGet(
-                "profiles",
-                query,
-                callback
-        );
-    }
-
-    // =========================================================
-    // SESSIONS
-    // =========================================================
-
-    public static void createSession(
-            String tutorId,
-            String subject,
-            String date,
-            String time,
-            String message,
-            EmptyCallback callback
-    ) {
-
-        String learnerId = userId();
-
-        if (
-                learnerId == null
-                        || learnerId.trim().isEmpty()
-        ) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        JSONObject row =
-                new JSONObject();
-
-        try {
-
-            row.put(
-                    "learner_id",
-                    learnerId
-            );
-
-            row.put(
-                    "tutor_id",
-                    tutorId
-            );
-
-            row.put(
-                    "subject",
-                    subject
-            );
-
-            row.put(
-                    "session_date",
-                    date
-            );
-
-            row.put(
-                    "session_time",
-                    time
-            );
-
-            row.put(
-                    "learner_message",
-                    message
-            );
-
-            row.put(
-                    "status",
-                    "pending"
-            );
-
-        } catch (JSONException e) {
-
-            callback.onError(
-                    errorMessage(e)
-            );
-
-            return;
-        }
-
-        dbPost(
-                "sessions",
-                row,
-                callback
-        );
-    }
-
-    public static void getMySessions(
-            JsonCallback callback
-    ) {
-
+    public static void getAcceptedSessions(JsonCallback callback) {
         String id = userId();
-
-        if (
-                id == null
-                        || id.trim().isEmpty()
-        ) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        dbGet(
-                "sessions",
-                "or=(learner_id.eq."
-                        + encode(id)
-                        + ",tutor_id.eq."
-                        + encode(id)
-                        + ")"
-                        + "&select=*"
-                        + "&order=created_at.desc",
-                callback
-        );
+        if (blank(id)) { callback.onError("You are not logged in."); return; }
+        dbGet("sessions", "status=eq.accepted&or=(learner_id.eq." + encode(id)
+                + ",tutor_id.eq." + encode(id) + ")&select=*&order=created_at.desc", callback);
     }
 
-    public static void getAcceptedSessions(
-            JsonCallback callback
-    ) {
-
+    public static void getTutorAcceptedSessions(JsonCallback callback) {
         String id = userId();
-
-        if (
-                id == null
-                        || id.trim().isEmpty()
-        ) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        dbGet(
-                "sessions",
-                "status=eq.accepted"
-                        + "&or=(learner_id.eq."
-                        + encode(id)
-                        + ",tutor_id.eq."
-                        + encode(id)
-                        + ")"
-                        + "&select=*"
-                        + "&order=created_at.desc",
-                callback
-        );
+        if (blank(id)) { callback.onError("Please sign in to view tutor sessions."); return; }
+        dbGet("sessions", "tutor_id=eq." + encode(id)
+                + "&status=eq.accepted&select=*&order=session_date.asc,session_time.asc", callback);
     }
 
-    public static void getPendingTutorRequests(
-            JsonCallback callback
-    ) {
-
+    public static void getPendingTutorRequests(JsonCallback callback) {
         String id = userId();
+        if (blank(id)) { callback.onError("You are not logged in."); return; }
+        dbGet("sessions", "tutor_id=eq." + encode(id)
+                + "&status=eq.pending&select=*&order=created_at.desc", callback);
+    }
 
-        if (
-                id == null
-                        || id.trim().isEmpty()
-        ) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
+    public static void updateSessionStatus(String sessionId, String status, EmptyCallback callback) {
+        if (blank(sessionId)) { callback.onError("Session ID is missing."); return; }
+        if (!("pending".equals(status) || "accepted".equals(status)
+                || "rejected".equals(status) || "completed".equals(status)
+                || "cancelled".equals(status))) {
+            callback.onError("Invalid session status."); return;
         }
-
-        dbGet(
-                "sessions",
-                "tutor_id=eq."
-                        + encode(id)
-                        + "&status=eq.pending"
-                        + "&select=*"
-                        + "&order=created_at.desc",
-                callback
-        );
+        JSONObject values = new JSONObject();
+        try { values.put("status", status); }
+        catch (JSONException e) { callback.onError(e.getMessage()); return; }
+        dbPatch("sessions", "id=eq." + encode(sessionId), values, callback);
     }
 
-    public static void updateSessionStatus(
-            String sessionId,
-            String status,
-            EmptyCallback callback
-    ) {
+    // -------------------- Messages --------------------
 
-        JSONObject values =
-                new JSONObject();
-
-        try {
-
-            values.put(
-                    "status",
-                    status
-            );
-
-        } catch (JSONException e) {
-
-            callback.onError(
-                    errorMessage(e)
-            );
-
-            return;
-        }
-
-        dbPatch(
-                "sessions",
-                "id=eq."
-                        + encode(sessionId),
-                values,
-                callback
-        );
+    public static void getMessages(String sessionId, JsonCallback callback) {
+        if (blank(sessionId)) { callback.onError("Session ID is missing."); return; }
+        dbGet("messages", "session_id=eq." + encode(sessionId)
+                + "&select=*&order=created_at.asc", callback);
     }
 
-    // =========================================================
-    // MESSAGES
-    // =========================================================
-
-    public static void getMessages(
-            String sessionId,
-            JsonCallback callback
-    ) {
-
-        dbGet(
-                "messages",
-                "session_id=eq."
-                        + encode(sessionId)
-                        + "&select=*"
-                        + "&order=created_at.asc",
-                callback
-        );
-    }
-
-    public static void sendMessage(
-            String sessionId,
-            String receiverId,
-            String message,
-            EmptyCallback callback
-    ) {
-
+    public static void sendMessage(String sessionId, String receiverId,
+                                   String message, EmptyCallback callback) {
+        if (callback == null) return;
         String senderId = userId();
-
-        if (
-                senderId == null
-                        || senderId.trim().isEmpty()
-        ) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
+        if (blank(senderId) || blank(token())) {
+            callback.onError("You are not logged in. Please sign in again.");
+            return;
+        }
+        if (blank(sessionId) || blank(receiverId) || blank(message)) {
+            callback.onError("Session, recipient and message are required.");
+            return;
+        }
+        String cleanMessage = message.trim();
+        if (cleanMessage.isEmpty()) {
+            callback.onError("Enter a message before sending.");
+            return;
+        }
+        if (cleanMessage.length() > 4000) {
+            callback.onError("Messages must be 4,000 characters or fewer.");
+            return;
+        }
+        if (senderId.equals(receiverId)) {
+            callback.onError("You cannot send a message to yourself.");
             return;
         }
 
-        JSONObject row =
-                new JSONObject();
-
+        JSONObject row = new JSONObject();
         try {
-
-            row.put(
-                    "session_id",
-                    sessionId
-            );
-
-            row.put(
-                    "sender_id",
-                    senderId
-            );
-
-            row.put(
-                    "receiver_id",
-                    receiverId
-            );
-
-            row.put(
-                    "body",
-                    message
-            );
-
+            row.put("session_id", sessionId.trim());
+            row.put("sender_id", senderId);
+            row.put("receiver_id", receiverId.trim());
+            row.put("body", cleanMessage);
         } catch (JSONException e) {
-
-            callback.onError(
-                    errorMessage(e)
-            );
-
+            callback.onError("Could not prepare the message.");
             return;
         }
 
-        dbPost(
-                "messages",
-                row,
-                callback
-        );
+        // The database must still enforce session participation with RLS.
+        // Never bypass RLS or use a service-role key in the Android app.
+        dbPost("messages", row, callback);
     }
 
-    // =========================================================
-    // NOTIFICATIONS
-    // =========================================================
+    // -------------------- Notifications --------------------
 
-    public static void getNotifications(
-            JsonCallback callback
-    ) {
-
+    public static void getNotifications(JsonCallback callback) {
         String id = userId();
-
-        if (
-                id == null
-                        || id.trim().isEmpty()
-        ) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        dbGet(
-                "notifications",
-                "user_id=eq."
-                        + encode(id)
-                        + "&select=*"
-                        + "&order=created_at.desc",
-                callback
-        );
+        if (blank(id)) { callback.onError("You are not logged in."); return; }
+        dbGet("notifications", "user_id=eq." + encode(id)
+                + "&select=*&order=created_at.desc", callback);
     }
 
-    public static void markNotificationRead(
-            String notificationId,
-            EmptyCallback callback
-    ) {
-
-        JSONObject values =
-                new JSONObject();
-
-        try {
-
-            values.put(
-                    "is_read",
-                    true
-            );
-
-        } catch (JSONException e) {
-
-            callback.onError(
-                    errorMessage(e)
-            );
-
-            return;
-        }
-
-        dbPatch(
-                "notifications",
-                "id=eq."
-                        + encode(notificationId),
-                values,
-                callback
-        );
+    public static void markNotificationRead(String notificationId, EmptyCallback callback) {
+        if (blank(notificationId)) { callback.onError("Notification ID is missing."); return; }
+        JSONObject values = new JSONObject();
+        try { values.put("is_read", true); }
+        catch (JSONException e) { callback.onError(e.getMessage()); return; }
+        dbPatch("notifications", "id=eq." + encode(notificationId), values, callback);
     }
 
-    // =========================================================
-    // TUTOR APPLICATIONS
-    // =========================================================
+    // -------------------- Tutor applications --------------------
 
-    public static void submitTutorApplication(
-            String moduleCodes,
-            String evidencePath,
-            EmptyCallback callback
-    ) {
-
+    public static void submitTutorApplication(String moduleCodes, String evidencePath,
+                                              EmptyCallback callback) {
         String id = userId();
-
-        if (
-                id == null
-                        || id.trim().isEmpty()
-        ) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        JSONObject row =
-                new JSONObject();
-
+        if (blank(id)) { callback.onError("You are not logged in."); return; }
+        if (blank(moduleCodes)) { callback.onError("Enter the modules you tutor."); return; }
+        JSONObject row = new JSONObject();
         try {
+            row.put("tutor_id", id);
+            row.put("module_codes", moduleCodes.trim());
+            row.put("evidence_path", evidencePath == null ? "" : evidencePath);
+            row.put("status", "pending");
+        } catch (JSONException e) { callback.onError(e.getMessage()); return; }
+        dbPost("tutor_applications", row, callback);
+    }
 
-            row.put(
-                    "tutor_id",
-                    id
-            );
-
-            row.put(
-                    "module_codes",
-                    moduleCodes
-            );
-
-            row.put(
-                    "evidence_path",
-                    evidencePath
-            );
-
-            row.put(
-                    "status",
-                    "pending"
-            );
-
-        } catch (JSONException e) {
-
-            callback.onError(
-                    errorMessage(e)
-            );
-
+    /** Lists all tutor applications (pending and already reviewed) via an admin-only RPC. */
+    public static void getTutorApplications(JsonCallback callback) {
+        if (callback == null) return;
+        if (blank(userId()) || blank(token())) {
+            callback.onError("Please sign in first.");
             return;
         }
-
-        dbPost(
-                "tutor_applications",
-                row,
-                callback
-        );
-    }
-
-    public static void getPendingApplications(
-            JsonCallback callback
-    ) {
-
-        dbGet(
-                "tutor_applications",
-                "status=eq.pending"
-                        + "&select=*"
-                        + "&order=created_at.asc",
-                callback
-        );
-    }
-
-    public static void reviewApplication(
-            String applicationId,
-            String tutorId,
-            boolean approve,
-            String note,
-            EmptyCallback callback
-    ) {
-
-        String status =
-                approve
-                        ? "verified"
-                        : "rejected";
-
-        JSONObject application =
-                new JSONObject();
-
-        JSONObject profile =
-                new JSONObject();
-
-        try {
-
-            application.put(
-                    "status",
-                    status
-            );
-
-            application.put(
-                    "reviewer_id",
-                    userId()
-            );
-
-            application.put(
-                    "reviewer_note",
-                    note == null
-                            ? ""
-                            : note
-            );
-
-            /*
-             * Keep profile role consistent with approval.
-             */
-            profile.put(
-                    "role",
-                    approve
-                            ? "tutor"
-                            : "learner"
-            );
-
-            profile.put(
-                    "verification_status",
-                    status
-            );
-
-        } catch (JSONException e) {
-
-            callback.onError(
-                    errorMessage(e)
-            );
-
-            return;
-        }
-
-        dbPatch(
-                "tutor_applications",
-                "id=eq."
-                        + encode(applicationId),
-                application,
-                new EmptyCallback() {
-
-                    @Override
-                    public void onSuccess() {
-
-                        dbPatch(
-                                "profiles",
-                                "id=eq."
-                                        + encode(tutorId),
-                                profile,
-                                callback
-                        );
-                    }
-
-                    @Override
-                    public void onError(
-                            String message
-                    ) {
-
-                        callback.onError(
-                                message
-                        );
-                    }
-                }
-        );
-    }
-
-    // =========================================================
-    // RESOURCES / MATERIALS
-    // =========================================================
-
-    public static void getResources(
-            JsonCallback callback
-    ) {
-
-        dbGet(
-                "resources",
-                "select=*"
-                        + "&order=created_at.desc",
-                callback
-        );
-    }
-
-    public static void createResource(
-            String title,
-            String subject,
-            String link,
-            String description,
-            EmptyCallback callback
-    ) {
-
-        String id = userId();
-
-        if (
-                id == null
-                        || id.trim().isEmpty()
-        ) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        JSONObject row =
-                new JSONObject();
-
-        try {
-
-            row.put(
-                    "owner_id",
-                    id
-            );
-
-            row.put(
-                    "title",
-                    title
-            );
-
-            row.put(
-                    "subject",
-                    subject
-            );
-
-            row.put(
-                    "url",
-                    link == null
-                            ? ""
-                            : link
-            );
-
-            row.put(
-                    "description",
-                    description == null
-                            ? ""
-                            : description
-            );
-
-        } catch (JSONException e) {
-
-            callback.onError(
-                    errorMessage(e)
-            );
-
-            return;
-        }
-
-        dbPost(
-                "resources",
-                row,
-                callback
-        );
-    }
-
-    public static void deleteResource(
-            String resourceId,
-            EmptyCallback callback
-    ) {
-
-        if (
-                resourceId == null
-                        || resourceId.trim().isEmpty()
-        ) {
-
-            callback.onError(
-                    "Resource ID is missing."
-            );
-
-            return;
-        }
-
-        dbDelete(
-                "resources",
-                "id=eq."
-                        + encode(resourceId),
-                callback
-        );
-    }
-
-    // =========================================================
-    // STORAGE
-    // =========================================================
-
-    public static void uploadFile(
-            android.content.ContentResolver resolver,
-            Uri uri,
-            String path,
-            EmptyCallback callback
-    ) {
-
-        if (!isLoggedIn()) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        if (resolver == null || uri == null) {
-
-            callback.onError(
-                    "Invalid file."
-            );
-
-            return;
-        }
-
-        try {
-
-            InputStream input =
-                    resolver.openInputStream(uri);
-
-            if (input == null) {
-
-                callback.onError(
-                        "Could not open selected file."
-                );
-
-                return;
-            }
-
-            byte[] bytes =
-                    readAll(input);
-
-            input.close();
-
-            String mime =
-                    resolver.getType(uri);
-
-            if (
-                    mime == null
-                            || mime.trim().isEmpty()
-            ) {
-
-                mime =
-                        "application/octet-stream";
-            }
-
-            String url =
-                    SupabaseConfig.URL
-                            + "/storage/v1/object/peerpath-files/"
-                            + path;
-
-            Request request =
-                    new Request.Builder()
-                            .url(url)
-                            .post(
-                                    RequestBody.create(
-                                            bytes,
-                                            MediaType.parse(mime)
-                                    )
-                            )
-                            .addHeader(
-                                    "apikey",
-                                    SupabaseConfig.PUBLISHABLE_KEY
-                            )
-                            .addHeader(
-                                    "Authorization",
-                                    "Bearer " + token()
-                            )
-                            .addHeader(
-                                    "Content-Type",
-                                    mime
-                            )
-                            .build();
-
-            executeEmpty(
-                    request,
-                    callback
-            );
-
-        } catch (Exception e) {
-
-            callback.onError(
-                    errorMessage(e)
-            );
-        }
-    }
-
-    // =========================================================
-    // DATABASE - GET
-    // =========================================================
-
-    private static void dbGet(
-            String table,
-            String query,
-            JsonCallback callback
-    ) {
-
-        if (!isLoggedIn()) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        String url =
-                SupabaseConfig.URL
-                        + "/rest/v1/"
-                        + table
-                        + "?"
-                        + query;
-
-        Request request =
-                new Request.Builder()
-                        .url(url)
-                        .get()
-                        .addHeader(
-                                "apikey",
-                                SupabaseConfig.PUBLISHABLE_KEY
-                        )
-                        .addHeader(
-                                "Authorization",
-                                "Bearer " + token()
-                        )
-                        .addHeader(
-                                "Accept",
-                                "application/json"
-                        )
-                        .build();
-
-        executeArray(
-                request,
-                callback
-        );
-    }
-
-    // =========================================================
-    // DATABASE - POST
-    // =========================================================
-
-    private static void dbPost(
-            String table,
-            JSONObject row,
-            EmptyCallback callback
-    ) {
-
-        if (!isLoggedIn()) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        String url =
-                SupabaseConfig.URL
-                        + "/rest/v1/"
-                        + table;
-
-        Request request =
-                new Request.Builder()
-                        .url(url)
-                        .post(
-                                RequestBody.create(
-                                        row.toString(),
-                                        JSON
-                                )
-                        )
-                        .addHeader(
-                                "apikey",
-                                SupabaseConfig.PUBLISHABLE_KEY
-                        )
-                        .addHeader(
-                                "Authorization",
-                                "Bearer " + token()
-                        )
-                        .addHeader(
-                                "Content-Type",
-                                "application/json"
-                        )
-                        .addHeader(
-                                "Prefer",
-                                "return=minimal"
-                        )
-                        .build();
-
-        executeEmpty(
-                request,
-                callback
-        );
-    }
-
-    // =========================================================
-    // DATABASE - PATCH
-    // =========================================================
-
-    private static void dbPatch(
-            String table,
-            String query,
-            JSONObject values,
-            EmptyCallback callback
-    ) {
-
-        if (!isLoggedIn()) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        String url =
-                SupabaseConfig.URL
-                        + "/rest/v1/"
-                        + table
-                        + "?"
-                        + query;
-
-        Request request =
-                new Request.Builder()
-                        .url(url)
-                        .patch(
-                                RequestBody.create(
-                                        values.toString(),
-                                        JSON
-                                )
-                        )
-                        .addHeader(
-                                "apikey",
-                                SupabaseConfig.PUBLISHABLE_KEY
-                        )
-                        .addHeader(
-                                "Authorization",
-                                "Bearer " + token()
-                        )
-                        .addHeader(
-                                "Content-Type",
-                                "application/json"
-                        )
-                        .addHeader(
-                                "Prefer",
-                                "return=minimal"
-                        )
-                        .build();
-
-        executeEmpty(
-                request,
-                callback
-        );
-    }
-
-    // =========================================================
-    // DATABASE - DELETE
-    // =========================================================
-
-    private static void dbDelete(
-            String table,
-            String query,
-            EmptyCallback callback
-    ) {
-
-        if (!isLoggedIn()) {
-
-            callback.onError(
-                    "You are not logged in."
-            );
-
-            return;
-        }
-
-        String url =
-                SupabaseConfig.URL
-                        + "/rest/v1/"
-                        + table
-                        + "?"
-                        + query;
-
-        Request request =
-                new Request.Builder()
-                        .url(url)
-                        .delete()
-                        .addHeader(
-                                "apikey",
-                                SupabaseConfig.PUBLISHABLE_KEY
-                        )
-                        .addHeader(
-                                "Authorization",
-                                "Bearer " + token()
-                        )
-                        .addHeader(
-                                "Prefer",
-                                "return=minimal"
-                        )
-                        .build();
-
-        executeEmpty(
-                request,
-                callback
-        );
-    }
-
-    // =========================================================
-    // EXECUTE OBJECT
-    // =========================================================
-
-    private static void executeObject(
-            Request request,
-            ObjectCallback callback
-    ) {
-
-        HTTP.newCall(request)
-                .enqueue(
-                        new Callback() {
-
-                            @Override
-                            public void onFailure(
-                                    Call call,
-                                    IOException e
-                            ) {
-
-                                callback.onError(
-                                        e.getMessage() == null
-                                                ? "Network request failed."
-                                                : e.getMessage()
-                                );
-                            }
-
-                            @Override
-                            public void onResponse(
-                                    Call call,
-                                    Response response
-                            ) throws IOException {
-
-                                String text =
-                                        response.body() == null
-                                                ? ""
-                                                : response.body().string();
-
-                                try {
-
-                                    if (!response.isSuccessful()) {
-
-                                        callback.onError(
-                                                parseError(
-                                                        text,
-                                                        response.code()
-                                                )
-                                        );
-
-                                        return;
-                                    }
-
-                                    JSONObject object;
-
-                                    if (
-                                            text == null
-                                                    || text.trim().isEmpty()
-                                    ) {
-
-                                        object =
-                                                new JSONObject();
-
-                                    } else {
-
-                                        object =
-                                                new JSONObject(text);
-                                    }
-
-                                    callback.onSuccess(
-                                            object
-                                    );
-
-                                } catch (JSONException e) {
-
-                                    callback.onError(
-                                            "Invalid Supabase response."
-                                    );
-
-                                } finally {
-
-                                    response.close();
-                                }
-                            }
-                        }
-                );
-    }
-
-    // =========================================================
-    // EXECUTE ARRAY
-    // =========================================================
-
-    private static void executeArray(
-            Request request,
-            JsonCallback callback
-    ) {
-
-        HTTP.newCall(request)
-                .enqueue(
-                        new Callback() {
-
-                            @Override
-                            public void onFailure(
-                                    Call call,
-                                    IOException e
-                            ) {
-
-                                callback.onError(
-                                        e.getMessage() == null
-                                                ? "Network request failed."
-                                                : e.getMessage()
-                                );
-                            }
-
-                            @Override
-                            public void onResponse(
-                                    Call call,
-                                    Response response
-                            ) throws IOException {
-
-                                String text =
-                                        response.body() == null
-                                                ? "[]"
-                                                : response.body().string();
-
-                                try {
-
-                                    if (!response.isSuccessful()) {
-
-                                        callback.onError(
-                                                parseError(
-                                                        text,
-                                                        response.code()
-                                                )
-                                        );
-
-                                        return;
-                                    }
-
-                                    callback.onSuccess(
-                                            new JSONArray(text)
-                                    );
-
-                                } catch (JSONException e) {
-
-                                    callback.onError(
-                                            "Invalid Supabase response."
-                                    );
-
-                                } finally {
-
-                                    response.close();
-                                }
-                            }
-                        }
-                );
-    }
-
-    // =========================================================
-    // EXECUTE EMPTY
-    // =========================================================
-
-    private static void executeEmpty(
-            Request request,
-            EmptyCallback callback
-    ) {
-
-        HTTP.newCall(request)
-                .enqueue(
-                        new Callback() {
-
-                            @Override
-                            public void onFailure(
-                                    Call call,
-                                    IOException e
-                            ) {
-
-                                callback.onError(
-                                        e.getMessage() == null
-                                                ? "Network request failed."
-                                                : e.getMessage()
-                                );
-                            }
-
-                            @Override
-                            public void onResponse(
-                                    Call call,
-                                    Response response
-                            ) throws IOException {
-
-                                String text =
-                                        response.body() == null
-                                                ? ""
-                                                : response.body().string();
-
-                                try {
-
-                                    if (!response.isSuccessful()) {
-
-                                        callback.onError(
-                                                parseError(
-                                                        text,
-                                                        response.code()
-                                                )
-                                        );
-
-                                        return;
-                                    }
-
-                                    callback.onSuccess();
-
-                                } finally {
-
-                                    response.close();
-                                }
-                            }
-                        }
-                );
-    }
-
-    // =========================================================
-    // FILE READER
-    // =========================================================
-
-    private static byte[] readAll(
-            InputStream input
-    ) throws IOException {
-
-        ByteArrayOutputStream output =
-                new ByteArrayOutputStream();
-
-        byte[] buffer =
-                new byte[8192];
-
-        int count;
-
-        while (
-                (count = input.read(buffer)) != -1
-        ) {
-
-            output.write(
-                    buffer,
-                    0,
-                    count
-            );
-        }
-
-        return output.toByteArray();
-    }
-
-    // =========================================================
-    // URL ENCODING
-    // =========================================================
-
-    private static String encode(
-            String value
-    ) {
-
-        try {
-
-            return URLEncoder
-                    .encode(
-                            value,
-                            StandardCharsets.UTF_8.name()
-                    )
-                    .replace(
-                            "+",
-                            "%20"
-                    );
-
-        } catch (Exception e) {
-
-            return value;
-        }
-    }
-
-    private static String encodeLike(
-            String value
-    ) {
-
-        return encode(value)
-                .replace(
-                        "%25",
-                        "%"
-                );
-    }
-
-    // =========================================================
-    // ERROR HANDLING
-    // =========================================================
-
-    private static String parseError(
-            String text,
-            int statusCode
-    ) {
-
-        try {
-
-            if (
-                    text != null
-                            && !text.trim().isEmpty()
-            ) {
-
-                JSONObject error =
-                        new JSONObject(text);
-
-                String message =
-                        error.optString(
-                                "message",
-                                ""
-                        );
-
-                if (message.isEmpty()) {
-
-                    message =
-                            error.optString(
-                                    "msg",
-                                    ""
-                            );
-                }
-
-                if (message.isEmpty()) {
-
-                    message =
-                            error.optString(
-                                    "error_description",
-                                    ""
-                            );
-                }
-
-                if (message.isEmpty()) {
-
-                    message =
-                            error.optString(
-                                    "hint",
-                                    ""
-                            );
-                }
-
-                if (!message.isEmpty()) {
-
-                    return message;
-                }
-            }
-
-        } catch (Exception ignored) {
-        }
-
-        return "Supabase request failed (HTTP "
-                + statusCode
-                + ").";
-    }
-
-    private static String errorMessage(
-            Exception exception
-    ) {
-
-        if (
-                exception == null
-                        || exception.getMessage() == null
-        ) {
-
-            return "An unexpected error occurred.";
-        }
-
-        return exception.getMessage();
-    }
-
-
-    public static void getLeaderboard(JsonCallback callback) {
-        if (callback == null) {
-            return;
-        }
-
         if (!isConfigured()) {
             callback.onError("Supabase is not configured.");
             return;
         }
-
-        if (!isLoggedIn()) {
-            callback.onError("Please sign in to view the leaderboard.");
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_admin_list_tutor_applications")
+                    .post(RequestBody.create("{}", JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
             return;
         }
-
-        String accessToken = token();
-
-        if (accessToken == null || accessToken.trim().isEmpty()) {
-            callback.onError("Your session has expired. Please sign in again.");
-            return;
-        }
-
-        Request request = new Request.Builder()
-                .url(SupabaseConfig.URL + "/rest/v1/rpc/peerpath_leaderboard")
-                .post(RequestBody.create("{}", JSON))
-                .addHeader("apikey", SupabaseConfig.PUBLISHABLE_KEY)
-                .addHeader("Authorization", "Bearer " + accessToken)
-                .addHeader("Content-Type", "application/json")
-                .addHeader("Accept", "application/json")
-                .build();
-
         executeArray(request, callback);
     }
 
+    /** Backwards-compatible name for screens that still call the pending method. */
+    public static void getPendingApplications(JsonCallback callback) {
+        getTutorApplications(callback);
+    }
+
+    public static void reviewApplication(String applicationId, String tutorId,
+                                         boolean approve, String note, EmptyCallback callback) {
+        adminReviewApplication(applicationId, tutorId, approve, note, callback);
+    }
+
+    /**
+     * Lists profiles through an admin-only database function.
+     * The database function must independently verify the current user is an admin.
+     */
+    public static void adminListUsers(JsonCallback callback) {
+        if (callback == null) return;
+        if (blank(userId()) || blank(token())) {
+            callback.onError("Please sign in first.");
+            return;
+        }
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_admin_list_users")
+                    .post(RequestBody.create("{}", JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+        executeArray(request, callback);
+    }
+
+    /**
+     * Reviews an application via a single database transaction.
+     * Requires public.peerpath_admin_review_tutor_application(uuid, uuid, boolean, text).
+     */
+    public static void adminReviewApplication(String applicationId, String tutorId,
+                                              boolean approve, String note,
+                                              EmptyCallback callback) {
+        if (callback == null) return;
+        if (blank(applicationId) || blank(tutorId)) {
+            callback.onError("Application ID and tutor ID are required.");
+            return;
+        }
+        if (blank(userId()) || blank(token())) {
+            callback.onError("Please sign in first.");
+            return;
+        }
+
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_application_id", applicationId);
+            body.put("p_tutor_id", tutorId);
+            body.put("p_approve", approve);
+            body.put("p_note", note == null ? "" : note);
+        } catch (JSONException e) {
+            callback.onError(e.getMessage());
+            return;
+        }
+
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_admin_review_tutor_application")
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+        executeEmpty(request, callback);
+    }
+
+    /**
+     * Temporarily suspends/restores a non-admin profile through a protected RPC.
+     * The database policies/functions must enforce the suspension across the app.
+     */
+    public static void adminSetSuspended(String targetUserId, boolean suspended,
+                                         EmptyCallback callback) {
+        if (callback == null) return;
+        if (blank(targetUserId)) {
+            callback.onError("User ID is required.");
+            return;
+        }
+        if (blank(userId()) || blank(token())) {
+            callback.onError("Please sign in first.");
+            return;
+        }
+
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_user_id", targetUserId);
+            body.put("p_suspended", suspended);
+        } catch (JSONException e) {
+            callback.onError(e.getMessage());
+            return;
+        }
+
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_admin_set_suspended")
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+        executeEmpty(request, callback);
+    }
+
+    // -------------------- Resources --------------------
+
+    public static void getResources(JsonCallback callback) {
+        dbGet("resources", "select=*&order=created_at.desc", callback);
+    }
+
+    public static void createResource(String title, String subject, String link,
+                                      String description, EmptyCallback callback) {
+        String id = userId();
+        if (blank(id)) { callback.onError("You are not logged in."); return; }
+        if (blank(title)) { callback.onError("Resource title is required."); return; }
+        JSONObject row = new JSONObject();
+        try {
+            row.put("owner_id", id);
+            row.put("title", title.trim());
+            row.put("subject", subject == null ? "" : subject.trim());
+            row.put("url", link == null ? "" : link.trim());
+            row.put("description", description == null ? "" : description.trim());
+        } catch (JSONException e) { callback.onError(e.getMessage()); return; }
+        dbPost("resources", row, callback);
+    }
+
+    public static void deleteResource(String resourceId, EmptyCallback callback) {
+        if (blank(resourceId)) { callback.onError("Resource ID is missing."); return; }
+        dbDelete("resources", "id=eq." + encode(resourceId), callback);
+    }
+
+    // -------------------- Storage --------------------
+
+    public static void uploadFile(ContentResolver resolver, Uri uri, String path,
+                                  EmptyCallback callback) {
+        if (!isLoggedIn()) { callback.onError("You are not logged in."); return; }
+        if (!isConfigured()) { callback.onError("Supabase is not configured."); return; }
+        if (resolver == null || uri == null || blank(path)) {
+            callback.onError("Choose a file and provide a storage path."); return;
+        }
+        try (InputStream input = resolver.openInputStream(uri)) {
+            if (input == null) { callback.onError("Could not open selected file."); return; }
+            byte[] bytes = readAll(input);
+            String mime = resolver.getType(uri);
+            if (blank(mime)) mime = "application/octet-stream";
+            String safePath = path.replace("\\", "/");
+            String url = SupabaseConfig.URL.trim() + "/storage/v1/object/peerpath-files/"
+                    + encodePath(safePath);
+            Request request = authedRequest(url)
+                    .post(RequestBody.create(bytes, MediaType.parse(mime)))
+                    .addHeader("Content-Type", mime)
+                    .build();
+            executeEmpty(request, callback);
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+        }
+    }
+
+    // -------------------- Leaderboard RPC --------------------
+
+    public static void getLeaderboard(JsonCallback callback) {
+        if (callback == null) return;
+        if (!isLoggedIn()) { callback.onError("Please sign in to view the leaderboard."); return; }
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_leaderboard")
+                    .post(RequestBody.create("{}", JSON)).build();
+        } catch (Exception e) { callback.onError(messageOf(e)); return; }
+        executeArray(request, callback);
+    }
+
+    // -------------------- HTTP helpers --------------------
+
+    private static String configurationError() {
+        if (!isConfigured()) {
+            return "Supabase configuration is missing or invalid. Check the project URL and publishable key.";
+        }
+        return null;
+    }
+
+    private static Request.Builder baseRequest(String url) {
+        return new Request.Builder().url(url)
+                .addHeader("apikey", SupabaseConfig.PUBLISHABLE_KEY.trim())
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Accept", "application/json");
+    }
+
+    private static Request.Builder authedRequest(String url) {
+        return baseRequest(url).addHeader("Authorization", "Bearer " + token());
+    }
+
+    private static void dbGet(String table, String query, JsonCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("You are not logged in."); return; }
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim() + "/rest/v1/"
+                    + table + "?" + query).get().build();
+        } catch (Exception e) { callback.onError(messageOf(e)); return; }
+        executeArray(request, callback);
+    }
+
+    private static void dbPost(String table, JSONObject row, EmptyCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("You are not logged in."); return; }
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim() + "/rest/v1/" + table)
+                    .post(RequestBody.create(row.toString(), JSON))
+                    .addHeader("Prefer", "return=minimal").build();
+        } catch (Exception e) { callback.onError(messageOf(e)); return; }
+        executeEmpty(request, callback);
+    }
+
+    private static void dbPatch(String table, String query, JSONObject values,
+                                EmptyCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("You are not logged in."); return; }
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim() + "/rest/v1/"
+                    + table + "?" + query)
+                    .patch(RequestBody.create(values.toString(), JSON))
+                    .addHeader("Prefer", "return=minimal").build();
+        } catch (Exception e) { callback.onError(messageOf(e)); return; }
+        executeEmpty(request, callback);
+    }
+
+    private static void dbDelete(String table, String query, EmptyCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("You are not logged in."); return; }
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim() + "/rest/v1/"
+                    + table + "?" + query)
+                    .delete().addHeader("Prefer", "return=minimal").build();
+        } catch (Exception e) { callback.onError(messageOf(e)); return; }
+        executeEmpty(request, callback);
+    }
+
+    private static void executeObject(Request request, ObjectCallback callback) {
+        executeObject(request, callback, false);
+    }
+
+    private static void executeObject(Request request, ObjectCallback callback,
+                                      boolean alreadyRetried) {
+        HTTP.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) {
+                callback.onError(messageOf(e));
+            }
+
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                String responseText;
+                int status;
+                try (Response r = response) {
+                    status = r.code();
+                    responseText = r.body() == null ? "" : r.body().string();
+                }
+                if (status == 401 && !alreadyRetried
+                        && request.header("Authorization") != null) {
+                    refreshSession(new ObjectCallback() {
+                        @Override public void onSuccess(JSONObject ignored) {
+                            executeObject(withCurrentToken(request), callback, true);
+                        }
+                        @Override public void onError(String message) {
+                            callback.onError("Your session expired. Please sign in again. " + message);
+                        }
+                    });
+                    return;
+                }
+                if (status < 200 || status >= 300) {
+                    callback.onError(parseError(responseText, status));
+                    return;
+                }
+                try {
+                    callback.onSuccess(responseText.trim().isEmpty()
+                            ? new JSONObject() : new JSONObject(responseText));
+                } catch (JSONException e) {
+                    callback.onError("Supabase returned an unreadable response.");
+                }
+            }
+        });
+    }
+
+    private static void executeArray(Request request, JsonCallback callback) {
+        executeArray(request, callback, false);
+    }
+
+    private static void executeArray(Request request, JsonCallback callback,
+                                     boolean alreadyRetried) {
+        HTTP.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) {
+                callback.onError(messageOf(e));
+            }
+
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                String responseText;
+                int status;
+                try (Response r = response) {
+                    status = r.code();
+                    responseText = r.body() == null ? "[]" : r.body().string();
+                }
+                if (status == 401 && !alreadyRetried
+                        && request.header("Authorization") != null) {
+                    refreshSession(new ObjectCallback() {
+                        @Override public void onSuccess(JSONObject ignored) {
+                            executeArray(withCurrentToken(request), callback, true);
+                        }
+                        @Override public void onError(String message) {
+                            callback.onError("Your session expired. Please sign in again. " + message);
+                        }
+                    });
+                    return;
+                }
+                if (status < 200 || status >= 300) {
+                    callback.onError(parseError(responseText, status));
+                    return;
+                }
+                try {
+                    callback.onSuccess(new JSONArray(responseText));
+                } catch (JSONException e) {
+                    callback.onError("Supabase returned an unreadable list response.");
+                }
+            }
+        });
+    }
+
+    private static void executeEmpty(Request request, EmptyCallback callback) {
+        executeEmpty(request, callback, false);
+    }
+
+    private static void executeEmpty(Request request, EmptyCallback callback,
+                                     boolean alreadyRetried) {
+        HTTP.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) {
+                callback.onError(messageOf(e));
+            }
+
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                String responseText;
+                int status;
+                try (Response r = response) {
+                    status = r.code();
+                    responseText = r.body() == null ? "" : r.body().string();
+                }
+                if (status == 401 && !alreadyRetried
+                        && request.header("Authorization") != null) {
+                    refreshSession(new ObjectCallback() {
+                        @Override public void onSuccess(JSONObject ignored) {
+                            executeEmpty(withCurrentToken(request), callback, true);
+                        }
+                        @Override public void onError(String message) {
+                            callback.onError("Your session expired. Please sign in again. " + message);
+                        }
+                    });
+                    return;
+                }
+                if (status < 200 || status >= 300) {
+                    callback.onError(parseError(responseText, status));
+                } else {
+                    callback.onSuccess();
+                }
+            }
+        });
+    }
+
+    /** Refreshes the Supabase session using the saved rotating refresh token. */
+    private static void refreshSession(ObjectCallback callback) {
+        SharedPreferences p = prefs;
+        String refresh = p == null ? null : p.getString("refresh_token", null);
+        if (blank(refresh)) {
+            callback.onError("No refresh token is saved.");
+            return;
+        }
+        JSONObject body = new JSONObject();
+        try {
+            body.put("refresh_token", refresh);
+        } catch (JSONException e) {
+            callback.onError("Could not prepare session refresh.");
+            return;
+        }
+        Request request = baseRequest(SupabaseConfig.URL.trim()
+                + "/auth/v1/token?grant_type=refresh_token")
+                .post(RequestBody.create(body.toString(), JSON))
+                .build();
+        executeObject(request, new ObjectCallback() {
+            @Override public void onSuccess(JSONObject data) {
+                String access = data.optString("access_token", "");
+                String newRefresh = data.optString("refresh_token", "");
+                JSONObject user = data.optJSONObject("user");
+                if (blank(access) || blank(newRefresh) || p == null) {
+                    callback.onError("Supabase did not return a valid refreshed session.");
+                    return;
+                }
+                SharedPreferences.Editor editor = p.edit()
+                        .putString("access_token", access)
+                        .putString("refresh_token", newRefresh);
+                if (user != null) {
+                    String id = user.optString("id", "");
+                    String email = user.optString("email", "");
+                    if (!blank(id)) editor.putString("user_id", id);
+                    if (!blank(email)) editor.putString("email", email);
+                }
+                editor.apply();
+                callback.onSuccess(data);
+            }
+            @Override public void onError(String message) {
+                callback.onError(message);
+            }
+        });
+    }
+
+    private static Request withCurrentToken(Request original) {
+        String current = token();
+        if (blank(current)) return original;
+        return original.newBuilder()
+                .header("Authorization", "Bearer " + current)
+                .build();
+    }
+
+    private static String parseError(String text, int code) {
+        if (text != null && !text.trim().isEmpty()) {
+            try {
+                JSONObject obj = new JSONObject(text);
+                String message = obj.optString("message", "");
+                if (message.isEmpty()) message = obj.optString("msg", "");
+                if (message.isEmpty()) message = obj.optString("error_description", "");
+                if (message.isEmpty()) message = obj.optString("hint", "");
+                if (message.isEmpty()) message = obj.optString("error", "");
+                if (!message.isEmpty()) return message + " (HTTP " + code + ")";
+            } catch (JSONException ignored) { }
+        }
+        if (code == 401 || code == 403) {
+            return "Supabase rejected the request (HTTP " + code
+                    + "). Check the project URL, publishable key, login session and Row Level Security policies.";
+        }
+        return "Supabase request failed (HTTP " + code + ").";
+    }
+
+    private static byte[] readAll(InputStream input) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[8192];
+        int count;
+        while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+        return output.toByteArray();
+    }
+
+    private static String encode(String value) {
+        try {
+            return URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20");
+        } catch (Exception e) { return value; }
+    }
+
+    private static String encodeLike(String value) {
+        return encode(value).replace("%25", "%");
+    }
+
+    private static String encodePath(String path) {
+        String[] parts = path.split("/");
+        StringBuilder result = new StringBuilder();
+        for (String part : parts) {
+            if (result.length() > 0) result.append("/");
+            result.append(encode(part));
+        }
+        return result.toString();
+    }
+
+    private static boolean blank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private static String messageOf(Exception e) {
+        return e == null || blank(e.getMessage()) ? "Network request failed." : e.getMessage();
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * Loads the minimal public-facing name for a conversation participant.
+     * The profiles SELECT policy must permit legitimate conversation participants
+     * to read this field; this method does not bypass Row Level Security.
+     */
+    public static void getConversationProfile(String participantId, ObjectCallback callback) {
+        if (callback == null) return;
+        if (blank(participantId)) {
+            callback.onError("Participant ID is missing.");
+            return;
+        }
+        getProfile(participantId, new ObjectCallback() {
+            @Override public void onSuccess(JSONObject profile) {
+                JSONObject safeProfile = new JSONObject();
+                try {
+                    safeProfile.put("id", profile.optString("id", participantId));
+                    safeProfile.put("full_name", profile.optString("full_name", ""));
+                } catch (JSONException e) {
+                    callback.onError("Could not read the participant profile.");
+                    return;
+                }
+                callback.onSuccess(safeProfile);
+            }
+
+            @Override public void onError(String message) {
+                callback.onError(message);
+            }
+        });
+    }
+
+    /** Loads the signed-in user's profile from public.profiles. */
+    public static void getMyProfile(ObjectCallback callback) {
+        if (callback == null) return;
+        String id = userId();
+        if (blank(id)) {
+            callback.onError("You are not logged in. Please sign in again.");
+            return;
+        }
+        getProfile(id, callback);
+    }
 
 }

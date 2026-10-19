@@ -19,7 +19,6 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.peerpath.supabase.SupabaseApi;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -81,6 +80,7 @@ public class BecomeTutorActivity extends AppCompatActivity {
         btnPickEvidence.setOnClickListener(v ->
                 evidencePicker.launch(new String[]{
                         "application/pdf",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         "image/jpeg",
                         "image/png",
                         "image/webp"
@@ -126,7 +126,7 @@ public class BecomeTutorActivity extends AppCompatActivity {
         }
 
         if (!isAllowedFile(selectedFileUri)) {
-            showError("Please select a PDF, JPEG, PNG or WebP file.");
+            showError("Please select a PDF, DOCX, JPEG, PNG or WebP file.");
             return;
         }
 
@@ -266,16 +266,37 @@ public class BecomeTutorActivity extends AppCompatActivity {
     }
 
     private boolean isAllowedFile(Uri uri) {
-        String type = getContentType(uri);
+        String type = getContentType(uri).toLowerCase(Locale.ROOT);
+        String name = getFileName(uri).toLowerCase(Locale.ROOT);
 
-        return "application/pdf".equalsIgnoreCase(type)
-                || "image/jpeg".equalsIgnoreCase(type)
-                || "image/png".equalsIgnoreCase(type)
-                || "image/webp".equalsIgnoreCase(type);
+        return "application/pdf".equals(type) || name.endsWith(".pdf")
+                || "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                .equals(type) || name.endsWith(".docx")
+                || "image/jpeg".equals(type) || name.endsWith(".jpg")
+                || name.endsWith(".jpeg")
+                || "image/png".equals(type) || name.endsWith(".png")
+                || "image/webp".equals(type) || name.endsWith(".webp");
     }
 
     private String getContentType(Uri uri) {
         String type = getContentResolver().getType(uri);
+
+        // Some document providers return a generic or missing MIME type.
+        // Fall back to the filename extension so DOCX and image uploads
+        // use the correct Content-Type when sent to Supabase Storage.
+        if (type != null && !type.trim().isEmpty()
+                && !"application/octet-stream".equalsIgnoreCase(type)) {
+            return type;
+        }
+
+        String name = getFileName(uri).toLowerCase(Locale.ROOT);
+        if (name.endsWith(".pdf")) return "application/pdf";
+        if (name.endsWith(".docx")) {
+            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        }
+        if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
+        if (name.endsWith(".png")) return "image/png";
+        if (name.endsWith(".webp")) return "image/webp";
 
         return type != null ? type : "application/octet-stream";
     }
@@ -333,3 +354,5 @@ public class BecomeTutorActivity extends AppCompatActivity {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
 }
+
+

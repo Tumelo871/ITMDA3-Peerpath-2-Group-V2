@@ -14,6 +14,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -22,1054 +23,348 @@ import com.example.peerpath.supabase.SupabaseApi;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+/** Shared resource repository. Uses SupabaseApi and the existing activity_materials.xml. */
 public class MaterialsActivity extends AppCompatActivity {
+    private static final int REQUEST_PICK_FILE = 7041;
+    private static final String STORAGE_BUCKET = "peerpath-files";
 
     private EditText etSearch;
     private TextView tvStatus;
     private LinearLayout container;
-
+    private Button addButton;
     private boolean mine;
+    private boolean canManageResources;
     private String uid;
-
     private String mySubject = "";
+    private final List<JSONObject> allMaterials = new ArrayList<>();
 
-    private final List<JSONObject> allMaterials =
-            new ArrayList<>();
+    private String pendingTitle, pendingSubject, pendingDescription;
+    private AlertDialog pendingDialog;
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+        SupabaseApi.init(getApplicationContext());
         setContentView(R.layout.activity_materials);
 
-        // =========================================================
-        // CURRENT USER
-        // =========================================================
-
         uid = SupabaseApi.userId();
-
-        if (uid == null || uid.trim().isEmpty()) {
-
-            Toast.makeText(
-                    this,
-                    "Please log in first.",
-                    Toast.LENGTH_LONG
-            ).show();
-
+        if (uid == null || uid.trim().isEmpty() || !SupabaseApi.isLoggedIn()) {
+            Toast.makeText(this, "Please sign in first.", Toast.LENGTH_LONG).show();
             finish();
             return;
         }
 
-        // =========================================================
-        // MODE
-        // =========================================================
-
         mine = getIntent().getBooleanExtra("mine", false);
-
-        // =========================================================
-        // VIEWS
-        // =========================================================
-
         etSearch = findViewById(R.id.etSearch);
         tvStatus = findViewById(R.id.tvMaterialStatus);
         container = findViewById(R.id.materialContainer);
-
         TextView title = findViewById(R.id.tvMaterialsTitle);
+        if (title != null) title.setText(mine ? "My Materials" : "Learning Materials");
 
-        if (title != null) {
-            title.setText(
-                    mine
-                            ? "My Materials"
-                            : "Learning Materials"
-            );
-        }
+        View back = findViewById(R.id.btnBack);
+        if (back != null) back.setOnClickListener(v -> finish());
 
-        // =========================================================
-        // BACK BUTTON
-        // =========================================================
-
-        View backButton = findViewById(R.id.btnBack);
-
-        if (backButton != null) {
-
-            backButton.setOnClickListener(
-                    new View.OnClickListener() {
-                        @Override
-                        public void onClick(View v) {
-                            finish();
-                        }
-                    }
-            );
-        }
-
-        // =========================================================
-        // ADD MATERIAL BUTTON
-        // =========================================================
-
-        Button addButton =
-                findViewById(R.id.btnAddMaterial);
-
+        addButton = findViewById(R.id.btnAddMaterial);
         if (addButton != null) {
-
-            addButton.setVisibility(
-                    mine
-                            ? View.VISIBLE
-                            : View.GONE
-            );
-
-            addButton.setOnClickListener(
-                    new View.OnClickListener() {
-                        @Override
-                        public void onClick(View v) {
-                            showAddDialog();
-                        }
-                    }
-            );
+            addButton.setVisibility(View.GONE);
+            addButton.setOnClickListener(v -> showAddDialog());
         }
 
-        // =========================================================
-        // SEARCH
-        // =========================================================
+        if (etSearch != null) etSearch.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { showMaterials(); }
+            @Override public void afterTextChanged(Editable s) { }
+        });
 
-        if (etSearch != null) {
-
-            etSearch.addTextChangedListener(
-                    new TextWatcher() {
-
-                        @Override
-                        public void beforeTextChanged(
-                                CharSequence s,
-                                int start,
-                                int count,
-                                int after
-                        ) {
-                        }
-
-                        @Override
-                        public void onTextChanged(
-                                CharSequence s,
-                                int start,
-                                int before,
-                                int count
-                        ) {
-                            showMaterials();
-                        }
-
-                        @Override
-                        public void afterTextChanged(
-                                Editable s
-                        ) {
-                        }
-                    }
-            );
-        }
-
-        // =========================================================
-        // LOAD PROFILE
-        // =========================================================
-
-        loadProfile();
-
-        // =========================================================
-        // LOAD MATERIALS
-        // =========================================================
-
-        loadMaterials();
+        loadProfileAndMaterials();
     }
 
-    // =============================================================
-    // PROFILE
-    // =============================================================
-
-    private void loadProfile() {
-
-        SupabaseApi.getProfile(
-                uid,
-                new SupabaseApi.ObjectCallback() {
-
-                    @Override
-                    public void onSuccess(JSONObject profile) {
-
-                        if (profile == null) {
-                            return;
-                        }
-
-                        mySubject = profile.optString(
-                                "tutor_subject",
-                                profile.optString(
-                                        "subject",
-                                        ""
-                                )
-                        );
+    private void loadProfileAndMaterials() {
+        SupabaseApi.getProfile(uid, new SupabaseApi.ObjectCallback() {
+            @Override public void onSuccess(JSONObject profile) {
+                runOnUiThread(() -> {
+                    if (profile != null) {
+                        mySubject = profile.optString("tutor_subject", profile.optString("subject", ""));
+                        String role = profile.optString("role", "");
+                        String verification = profile.optString("verification_status", "");
+                        canManageResources = "admin".equalsIgnoreCase(role) ||
+                                ("tutor".equalsIgnoreCase(role) &&
+                                        (verification.isEmpty() || "verified".equalsIgnoreCase(verification)));
                     }
-
-                    @Override
-                    public void onError(String message) {
-                        // Profile is optional.
-                    }
-                }
-        );
+                    if (addButton != null) addButton.setVisibility(canManageResources ? View.VISIBLE : View.GONE);
+                    loadMaterials();
+                });
+            }
+            @Override public void onError(String message) {
+                runOnUiThread(() -> {
+                    canManageResources = false;
+                    if (addButton != null) addButton.setVisibility(View.GONE);
+                    loadMaterials();
+                });
+            }
+        });
     }
-
-    // =============================================================
-    // LOAD MATERIALS
-    // =============================================================
 
     private void loadMaterials() {
-
-        if (tvStatus != null) {
-            tvStatus.setText("Loading materials...");
-        }
-
-        SupabaseApi.getResources(
-                new SupabaseApi.JsonCallback() {
-
-                    @Override
-                    public void onSuccess(JSONArray data) {
-
-                        runOnUiThread(
-                                new Runnable() {
-                                    @Override
-                                    public void run() {
-
-                                        allMaterials.clear();
-
-                                        if (data != null) {
-
-                                            for (
-                                                    int i = 0;
-                                                    i < data.length();
-                                                    i++
-                                            ) {
-
-                                                JSONObject item =
-                                                        data.optJSONObject(i);
-
-                                                if (item == null) {
-                                                    continue;
-                                                }
-
-                                                String ownerId =
-                                                        item.optString(
-                                                                "owner_id",
-                                                                ""
-                                                        );
-
-                                                if (
-                                                        !mine
-                                                                || uid.equals(ownerId)
-                                                ) {
-                                                    allMaterials.add(item);
-                                                }
-                                            }
-                                        }
-
-                                        showMaterials();
-                                    }
-                                }
-                        );
+        if (tvStatus != null) tvStatus.setText("Loading resources…");
+        SupabaseApi.getResources(new SupabaseApi.JsonCallback() {
+            @Override public void onSuccess(JSONArray data) {
+                runOnUiThread(() -> {
+                    allMaterials.clear();
+                    if (data != null) for (int i = 0; i < data.length(); i++) {
+                        JSONObject item = data.optJSONObject(i);
+                        if (item == null) continue;
+                        String owner = item.optString("owner_id", "");
+                        if (!mine || uid.equals(owner)) allMaterials.add(item);
                     }
-
-                    @Override
-                    public void onError(String message) {
-
-                        runOnUiThread(
-                                new Runnable() {
-                                    @Override
-                                    public void run() {
-
-                                        if (tvStatus != null) {
-                                            tvStatus.setText(
-                                                    "Could not load materials."
-                                            );
-                                        }
-
-                                        Toast.makeText(
-                                                MaterialsActivity.this,
-                                                message == null
-                                                        ? "Unable to load materials."
-                                                        : message,
-                                                Toast.LENGTH_LONG
-                                        ).show();
-                                    }
-                                }
-                        );
-                    }
-                }
-        );
+                    showMaterials();
+                });
+            }
+            @Override public void onError(String message) {
+                runOnUiThread(() -> {
+                    if (tvStatus != null) tvStatus.setText("Could not load resources. Check your connection and Supabase permissions.");
+                    Toast.makeText(MaterialsActivity.this, message == null ? "Unable to load resources." : message, Toast.LENGTH_LONG).show();
+                });
+            }
+        });
     }
-
-    // =============================================================
-    // DISPLAY MATERIALS
-    // =============================================================
 
     private void showMaterials() {
-
-        if (container == null) {
-            return;
-        }
-
-        String query = "";
-
-        if (etSearch != null) {
-
-            query = etSearch
-                    .getText()
-                    .toString()
-                    .trim()
-                    .toLowerCase(Locale.ROOT);
-        }
-
+        if (container == null) return;
+        String query = etSearch == null ? "" : etSearch.getText().toString().trim().toLowerCase(Locale.ROOT);
         container.removeAllViews();
-
         int shown = 0;
-
-        for (JSONObject material : allMaterials) {
-
-            String title =
-                    getString(material, "title");
-
-            String subject =
-                    getString(material, "subject");
-
-            String description =
-                    getString(material, "description");
-
-            String searchableText =
-                    (
-                            title
-                                    + " "
-                                    + subject
-                                    + " "
-                                    + description
-                    ).toLowerCase(Locale.ROOT);
-
-            if (
-                    !query.isEmpty()
-                            && !searchableText.contains(query)
-            ) {
-                continue;
-            }
-
-            addMaterialCard(material);
-
+        for (JSONObject item : allMaterials) {
+            String title = val(item, "title"), subject = val(item, "subject"), description = val(item, "description");
+            String searchable = (title + " " + subject + " " + description + " " + val(item, "tutor_name")).toLowerCase(Locale.ROOT);
+            if (!query.isEmpty() && !searchable.contains(query)) continue;
+            addMaterialCard(item);
             shown++;
         }
-
-        if (tvStatus != null) {
-
-            if (shown == 0) {
-
-                tvStatus.setText(
-                        mine
-                                ? "You have not added any materials yet."
-                                : "No materials found."
-                );
-
-            } else {
-
-                tvStatus.setText(
-                        shown
-                                + (
-                                shown == 1
-                                        ? " material"
-                                        : " materials"
-                        )
-                );
-            }
-        }
+        if (tvStatus != null) tvStatus.setText(shown == 0 ? (mine ? "You have not added any resources yet." : "No resources found. Tutors can add resources from My materials.") : shown + (shown == 1 ? " resource" : " resources"));
     }
 
-    // =============================================================
-    // MATERIAL CARD
-    // =============================================================
-
-    private void addMaterialCard(
-            final JSONObject material
-    ) {
-
-        LinearLayout card =
-                Ui.card(this);
-
-        card.setPadding(
-                Ui.dp(this, 16),
-                Ui.dp(this, 16),
-                Ui.dp(this, 16),
-                Ui.dp(this, 16)
-        );
-
-        // =========================================================
-        // TITLE
-        // =========================================================
-
-        String title =
-                getString(material, "title");
-
-        TextView titleView =
-                Ui.text(
-                        this,
-                        "📘 " + title,
-                        18,
-                        R.color.text_primary,
-                        true
-                );
-
-        card.addView(titleView);
-
-        // =========================================================
-        // SUBJECT
-        // =========================================================
-
-        String subject =
-                getString(material, "subject");
-
-        if (!subject.isEmpty()) {
-
-            Ui.add(
-                    card,
-                    Ui.text(
-                            this,
-                            subject,
-                            13,
-                            R.color.peer_blue,
-                            true
-                    ),
-                    6
-            );
+    private void addMaterialCard(JSONObject item) {
+        LinearLayout card = Ui.card(this);
+        int pad = Ui.dp(this, 16);
+        card.setPadding(pad, pad, pad, pad);
+        String title = val(item, "title"), subject = val(item, "subject"), description = val(item, "description");
+        card.addView(Ui.text(this, "📘 " + (title.isEmpty() ? "Untitled resource" : title), 18, R.color.text_primary, true));
+        if (!subject.isEmpty()) Ui.add(card, Ui.text(this, subject, 13, R.color.peer_blue, true), 6);
+        if (!description.isEmpty()) Ui.add(card, Ui.text(this, description, 14, R.color.text_secondary, false), 8);
+        String url = val(item, "url");
+        if (url.isEmpty()) url = val(item, "link");
+        if (!url.isEmpty()) {
+            final String finalUrl = url;
+            Button open = makeButton("Open / download resource");
+            open.setOnClickListener(v -> openLink(finalUrl));
+            Ui.add(card, open, 8);
+        } else {
+            Ui.add(card, Ui.text(this, "No file or link was attached to this resource.", 13, R.color.text_secondary, false), 8);
         }
-
-        // =========================================================
-        // DESCRIPTION
-        // =========================================================
-
-        String description =
-                getString(material, "description");
-
-        if (!description.isEmpty()) {
-
-            Ui.add(
-                    card,
-                    Ui.text(
-                            this,
-                            description,
-                            14,
-                            R.color.text_secondary,
-                            false
-                    ),
-                    8
-            );
+        if (mine && uid.equals(val(item, "owner_id"))) {
+            Button delete = makeButton("Delete resource");
+            delete.setOnClickListener(v -> confirmDelete(item));
+            Ui.add(card, delete, 6);
         }
-
-        // =========================================================
-        // LINK
-        // =========================================================
-
-        String url =
-                getString(material, "url");
-
-        if (url.isEmpty()) {
-
-            url =
-                    getString(material, "link");
-        }
-
-        /*
-         * Make a final copy so Java can safely
-         * use the URL inside the click listener.
-         */
-
-        final String materialUrl = url;
-
-        if (!materialUrl.isEmpty()) {
-
-            Button openButton =
-                    createButton(
-                            "Open material",
-                            true
-                    );
-
-            openButton.setOnClickListener(
-                    new View.OnClickListener() {
-
-                        @Override
-                        public void onClick(View v) {
-
-                            openLink(materialUrl);
-                        }
-                    }
-            );
-
-            Ui.add(
-                    card,
-                    openButton,
-                    10
-            );
-        }
-
-        // =========================================================
-        // DELETE
-        // =========================================================
-
-        if (mine) {
-
-            Button deleteButton =
-                    createButton(
-                            "Delete",
-                            false
-                    );
-
-            deleteButton.setTextColor(
-                    getColor(
-                            R.color.danger
-                    )
-            );
-
-            deleteButton.setOnClickListener(
-                    new View.OnClickListener() {
-
-                        @Override
-                        public void onClick(View v) {
-
-                            confirmDelete(material);
-                        }
-                    }
-            );
-
-            Ui.add(
-                    card,
-                    deleteButton,
-                    6
-            );
-        }
-
-        // =========================================================
-        // ADD CARD TO SCREEN
-        // =========================================================
-
-        Ui.addToList(
-                container,
-                card
-        );
+        Ui.addToList(container, card);
     }
 
-    // =============================================================
-    // BUTTON
-    // =============================================================
-
-    private Button createButton(
-            String text,
-            boolean primary
-    ) {
-
-        Button button =
-                new Button(this);
-
-        button.setText(text);
-        button.setAllCaps(false);
-
-        return button;
+    private Button makeButton(String text) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setAllCaps(false);
+        return b;
     }
-
-    // =============================================================
-    // DELETE CONFIRMATION
-    // =============================================================
-
-    private void confirmDelete(
-            final JSONObject material
-    ) {
-
-        final String id =
-                material.optString(
-                        "id",
-                        ""
-                );
-
-        if (id.isEmpty()) {
-
-            Toast.makeText(
-                    this,
-                    "Material ID is missing.",
-                    Toast.LENGTH_LONG
-            ).show();
-
-            return;
-        }
-
-        String title =
-                getString(
-                        material,
-                        "title"
-                );
-
-        new AlertDialog.Builder(this)
-
-                .setTitle(
-                        "Delete material?"
-                )
-
-                .setMessage(
-                        "Are you sure you want to delete:\n\n"
-                                + title
-                )
-
-                .setPositiveButton(
-                        "Delete",
-                        new DialogInterface.OnClickListener() {
-
-                            @Override
-                            public void onClick(
-                                    DialogInterface dialog,
-                                    int which
-                            ) {
-
-                                deleteMaterial(id);
-                            }
-                        }
-                )
-
-                .setNegativeButton(
-                        "Cancel",
-                        null
-                )
-
-                .show();
-    }
-
-    // =============================================================
-    // DELETE MATERIAL
-    // =============================================================
-
-    private void deleteMaterial(
-            String materialId
-    ) {
-
-        Toast.makeText(
-                this,
-                "Deleting material...",
-                Toast.LENGTH_SHORT
-        ).show();
-
-        SupabaseApi.deleteResource(
-                materialId,
-                new SupabaseApi.EmptyCallback() {
-
-                    @Override
-                    public void onSuccess() {
-
-                        runOnUiThread(
-                                new Runnable() {
-
-                                    @Override
-                                    public void run() {
-
-                                        Toast.makeText(
-                                                MaterialsActivity.this,
-                                                "Material deleted.",
-                                                Toast.LENGTH_SHORT
-                                        ).show();
-
-                                        loadMaterials();
-                                    }
-                                }
-                        );
-                    }
-
-                    @Override
-                    public void onError(
-                            final String message
-                    ) {
-
-                        runOnUiThread(
-                                new Runnable() {
-
-                                    @Override
-                                    public void run() {
-
-                                        Toast.makeText(
-                                                MaterialsActivity.this,
-                                                "Delete failed: "
-                                                        + message,
-                                                Toast.LENGTH_LONG
-                                        ).show();
-                                    }
-                                }
-                        );
-                    }
-                }
-        );
-    }
-
-    // =============================================================
-    // ADD MATERIAL DIALOG
-    // =============================================================
 
     private void showAddDialog() {
-
-        LinearLayout box =
-                new LinearLayout(this);
-
-        box.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
-        int padding =
-                Ui.dp(this, 20);
-
-        box.setPadding(
-                padding,
-                Ui.dp(this, 8),
-                padding,
-                0
-        );
-
-        // =========================================================
-        // TITLE
-        // =========================================================
-
-        final EditText title =
-                createField(
-                        box,
-                        "Title",
-                        InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-                );
-
-        // =========================================================
-        // SUBJECT
-        // =========================================================
-
-        final EditText subject =
-                createField(
-                        box,
-                        "Subject / module",
-                        InputType.TYPE_TEXT_FLAG_CAP_WORDS
-                );
-
+        if (!canManageResources) {
+            Toast.makeText(this, "Only verified tutors can add learning resources.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int p = Ui.dp(this, 18);
+        box.setPadding(p, Ui.dp(this, 8), p, 0);
+        EditText title = field("Resource title", InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        EditText subject = field("Subject / module", InputType.TYPE_TEXT_FLAG_CAP_WORDS);
         subject.setText(mySubject);
-
-        // =========================================================
-        // LINK
-        // =========================================================
-
-        final EditText link =
-                createField(
-                        box,
-                        "Link (optional)",
-                        InputType.TYPE_TEXT_VARIATION_URI
+        EditText link = field("External link (optional)", InputType.TYPE_TEXT_VARIATION_URI);
+        EditText desc = field("Description / notes", InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        box.addView(title); box.addView(subject); box.addView(link); box.addView(desc);
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Add learning resource").setView(box)
+                .setPositiveButton("Continue", null).setNeutralButton("Choose file", null).setNegativeButton("Cancel", null).create();
+        dialog.setOnShowListener(d -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String t = title.getText().toString().trim(), s = subject.getText().toString().trim();
+                String l = link.getText().toString().trim(), de = desc.getText().toString().trim();
+                if (t.isEmpty()) { title.setError("Enter a title"); return; }
+                if (l.isEmpty() && de.isEmpty()) { desc.setError("Add a description, a link, or choose a file"); return; }
+                if (!l.isEmpty() && !l.startsWith("https://") && !l.startsWith("http://")) l = "https://" + l;
+                dialog.dismiss(); saveResource(t, s, l, de, null);
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+                String t = title.getText().toString().trim(), s = subject.getText().toString().trim();
+                String l = link.getText().toString().trim(), de = desc.getText().toString().trim();
+                if (t.isEmpty()) { title.setError("Enter a title before choosing a file"); return; }
+                pendingTitle = t; pendingSubject = s; pendingDescription = de;
+                if (!l.isEmpty() && !l.startsWith("https://") && !l.startsWith("http://")) l = "https://" + l;
+                pendingExternalLink = l;
+                pendingDialog = dialog;
+                Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                pick.addCategory(Intent.CATEGORY_OPENABLE);
+                pick.setType("*/*");
+                pick.addFlags(
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
                 );
-
-        // =========================================================
-        // DESCRIPTION
-        // =========================================================
-
-        final EditText notes =
-                createField(
-                        box,
-                        "Description / notes",
-                        InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-                );
-
-        // =========================================================
-        // DIALOG
-        // =========================================================
-
-        final AlertDialog dialog =
-                new AlertDialog.Builder(this)
-
-                        .setTitle(
-                                "Add learning material"
-                        )
-
-                        .setView(box)
-
-                        .setPositiveButton(
-                                "Add",
-                                null
-                        )
-
-                        .setNegativeButton(
-                                "Cancel",
-                                null
-                        )
-
-                        .create();
-
-        dialog.setOnShowListener(
-                new DialogInterface.OnShowListener() {
-
-                    @Override
-                    public void onShow(
-                            DialogInterface d
-                    ) {
-
-                        Button addButton =
-                                dialog.getButton(
-                                        AlertDialog.BUTTON_POSITIVE
-                                );
-
-                        addButton.setOnClickListener(
-                                new View.OnClickListener() {
-
-                                    @Override
-                                    public void onClick(
-                                            View v
-                                    ) {
-
-                                        String titleText =
-                                                title.getText()
-                                                        .toString()
-                                                        .trim();
-
-                                        String subjectText =
-                                                subject.getText()
-                                                        .toString()
-                                                        .trim();
-
-                                        String linkText =
-                                                link.getText()
-                                                        .toString()
-                                                        .trim();
-
-                                        String notesText =
-                                                notes.getText()
-                                                        .toString()
-                                                        .trim();
-
-                                        // =================================================
-                                        // VALIDATION
-                                        // =================================================
-
-                                        if (titleText.isEmpty()) {
-
-                                            title.setError(
-                                                    "Enter a title"
-                                            );
-
-                                            title.requestFocus();
-
-                                            return;
-                                        }
-
-                                        if (
-                                                linkText.isEmpty()
-                                                        && notesText.isEmpty()
-                                        ) {
-
-                                            link.setError(
-                                                    "Add a link or description"
-                                            );
-
-                                            link.requestFocus();
-
-                                            return;
-                                        }
-
-                                        // =================================================
-                                        // NORMALIZE URL
-                                        // =================================================
-
-                                        if (
-                                                !linkText.isEmpty()
-                                                        && !linkText
-                                                        .toLowerCase(Locale.ROOT)
-                                                        .startsWith("http://")
-                                                        && !linkText
-                                                        .toLowerCase(Locale.ROOT)
-                                                        .startsWith("https://")
-                                        ) {
-
-                                            linkText =
-                                                    "https://"
-                                                            + linkText;
-                                        }
-
-                                        // =================================================
-                                        // SAVE
-                                        // =================================================
-
-                                        saveMaterial(
-                                                titleText,
-                                                subjectText,
-                                                linkText,
-                                                notesText,
-                                                dialog
-                                        );
-                                    }
-                                }
-                        );
-                    }
-                }
-        );
-
+                startActivityForResult(pick, REQUEST_PICK_FILE);
+            });
+        });
         dialog.show();
     }
 
-    // =============================================================
-    // FORM FIELD
-    // =============================================================
+    private String pendingExternalLink = "";
 
-    private EditText createField(
-            LinearLayout parent,
-            String hint,
-            int type
-    ) {
-
-        EditText editText =
-                new EditText(this);
-
-        editText.setHint(hint);
-
-        editText.setInputType(
-                InputType.TYPE_CLASS_TEXT
-                        | type
-        );
-
-        parent.addView(
-                editText,
-                new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-        );
-
-        return editText;
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQUEST_PICK_FILE || resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
+        if (pendingDialog != null && pendingDialog.isShowing()) pendingDialog.dismiss();
+        String fileName = "resource_" + System.currentTimeMillis() + safeExtension(uri);
+        String storagePath = uid + "/" + fileName;
+        if (tvStatus != null) tvStatus.setText("Uploading file…");
+        Toast.makeText(this, "Uploading resource…", Toast.LENGTH_SHORT).show();
+        SupabaseApi.uploadFile(getContentResolver(), uri, storagePath, new SupabaseApi.EmptyCallback() {
+            @Override public void onSuccess() {
+                String publicUrl = getSupabasePublicUrl(storagePath);
+                String combinedDescription = pendingDescription;
+                saveResource(pendingTitle, pendingSubject, publicUrl, combinedDescription, null);
+            }
+            @Override public void onError(String message) {
+                runOnUiThread(() -> {
+                    if (tvStatus != null) tvStatus.setText("File upload failed.");
+                    Toast.makeText(MaterialsActivity.this, "Upload failed: " + message, Toast.LENGTH_LONG).show();
+                });
+            }
+        });
     }
 
-    // =============================================================
-    // SAVE MATERIAL
-    // =============================================================
+    private String getSupabasePublicUrl(String path) {
+        String base = SupabaseConfig.URL.trim();
 
-    private void saveMaterial(
-            String title,
-            String subject,
-            String link,
-            String description,
-            final AlertDialog dialog
-    ) {
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
 
-        Toast.makeText(
-                this,
-                "Saving material...",
-                Toast.LENGTH_SHORT
-        ).show();
+        String encoded = path
+                .replace("%", "%25")
+                .replace(" ", "%20")
+                .replace("#", "%23")
+                .replace("?", "%3F");
 
-        SupabaseApi.createResource(
-                title,
-                subject,
-                link,
-                description,
-                new SupabaseApi.EmptyCallback() {
-
-                    @Override
-                    public void onSuccess() {
-
-                        runOnUiThread(
-                                new Runnable() {
-
-                                    @Override
-                                    public void run() {
-
-                                        dialog.dismiss();
-
-                                        Toast.makeText(
-                                                MaterialsActivity.this,
-                                                "Material added successfully.",
-                                                Toast.LENGTH_SHORT
-                                        ).show();
-
-                                        loadMaterials();
-                                    }
-                                }
-                        );
-                    }
-
-                    @Override
-                    public void onError(
-                            final String message
-                    ) {
-
-                        runOnUiThread(
-                                new Runnable() {
-
-                                    @Override
-                                    public void run() {
-
-                                        Toast.makeText(
-                                                MaterialsActivity.this,
-                                                "Could not add material: "
-                                                        + message,
-                                                Toast.LENGTH_LONG
-                                        ).show();
-                                    }
-                                }
-                        );
-                    }
-                }
-        );
+        return base
+                + "/storage/v1/object/public/"
+                + STORAGE_BUCKET
+                + "/"
+                + encoded;
     }
 
-    // =============================================================
-    // OPEN LINK
-    // =============================================================
+    private String safeExtension(Uri uri) {
+        String mime = getContentResolver().getType(uri);
 
-    private void openLink(
-            String link
-    ) {
+        if ("application/pdf".equals(mime)) return ".pdf";
+        if ("text/plain".equals(mime)) return ".txt";
+        if ("application/msword".equals(mime)) return ".doc";
+        if ("application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                .equals(mime)) return ".docx";
+        if ("application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                .equals(mime)) return ".pptx";
+        if ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                .equals(mime)) return ".xlsx";
+        if (mime != null && mime.startsWith("video/")) return ".mp4";
 
-        if (link == null || link.trim().isEmpty()) {
+        return ".bin";
+    }
 
-            Toast.makeText(
-                    this,
-                    "No material link available.",
-                    Toast.LENGTH_SHORT
-            ).show();
+    private EditText field(String hint, int flags) {
+        EditText e = new EditText(this);
+        e.setHint(hint);
+        e.setInputType(InputType.TYPE_CLASS_TEXT | flags);
+        e.setPadding(Ui.dp(this, 10), Ui.dp(this, 8), Ui.dp(this, 10), Ui.dp(this, 8));
+        return e;
+    }
 
+    private void saveResource(String title, String subject, String url, String description, AlertDialog ignored) {
+        if (tvStatus != null) tvStatus.setText("Saving resource…");
+        SupabaseApi.createResource(title, subject, url, description, new SupabaseApi.EmptyCallback() {
+            @Override public void onSuccess() {
+                runOnUiThread(() -> {
+                    Toast.makeText(MaterialsActivity.this, "Resource published.", Toast.LENGTH_SHORT).show();
+                    pendingTitle = pendingSubject = pendingDescription = pendingExternalLink = "";
+                    loadMaterials();
+                });
+            }
+            @Override public void onError(String message) {
+                runOnUiThread(() -> {
+                    if (tvStatus != null) tvStatus.setText("Could not save resource.");
+                    Toast.makeText(MaterialsActivity.this, "Save failed: " + message, Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    private void confirmDelete(JSONObject item) {
+        String id = val(item, "id");
+        if (id.isEmpty()) { Toast.makeText(this, "Resource ID is missing.", Toast.LENGTH_LONG).show(); return; }
+        new AlertDialog.Builder(this).setTitle("Delete resource?").setMessage("Delete “" + val(item, "title") + "”?")
+                .setPositiveButton("Delete", (d, w) -> deleteResource(id)).setNegativeButton("Cancel", null).show();
+    }
+
+    private void deleteResource(String id) {
+        SupabaseApi.deleteResource(id, new SupabaseApi.EmptyCallback() {
+            @Override public void onSuccess() { runOnUiThread(() -> { Toast.makeText(MaterialsActivity.this, "Resource deleted.", Toast.LENGTH_SHORT).show(); loadMaterials(); }); }
+            @Override public void onError(String message) { runOnUiThread(() -> Toast.makeText(MaterialsActivity.this, "Delete failed: " + message, Toast.LENGTH_LONG).show()); }
+        });
+    }
+
+    private void openLink(String link) {
+        if (link == null || link.trim().isEmpty()
+                || "null".equalsIgnoreCase(link.trim())) {
+            Toast.makeText(this,
+                    "This resource has no attached file or link. Ask the tutor to upload it again.",
+                    Toast.LENGTH_LONG).show();
             return;
         }
 
         try {
+            String value = link.trim();
 
-            Uri uri =
-                    Uri.parse(link);
+            if (!value.startsWith("https://")
+                    && !value.startsWith("http://")) {
+                value = getSupabasePublicUrl(value);
+            }
 
-            Intent intent =
-                    new Intent(
-                            Intent.ACTION_VIEW,
-                            uri
-                    );
-
+            Uri uri = Uri.parse(value);
+            Intent intent = new Intent(Intent.ACTION_VIEW, uri);
             startActivity(intent);
 
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(this,
+                    "No app is available to open this file.",
+                    Toast.LENGTH_LONG).show();
         } catch (Exception e) {
-
-            Toast.makeText(
-                    this,
-                    "Cannot open this material link.",
-                    Toast.LENGTH_LONG
-            ).show();
+            Toast.makeText(this,
+                    "Could not open the resource. Check its file URL.",
+                    Toast.LENGTH_LONG).show();
         }
     }
 
-    // =============================================================
-    // JSON STRING
-    // =============================================================
-
-    private String getString(
-            JSONObject object,
-            String key
-    ) {
-
-        if (object == null) {
-            return "";
-        }
-
-        return object.optString(
-                key,
-                ""
-        ).trim();
-    }
+    private String val(JSONObject obj, String key) { return obj == null ? "" : obj.optString(key, "").trim(); }
 }

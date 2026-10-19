@@ -1,113 +1,157 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/peer_background">
+    android:background="@color/peer_background"
+    android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:padding="20dp">
 
-        <!-- HEADER -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnBack"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="← Back"
+            android:textColor="@color/peer_dark_blue"
+            app:backgroundTint="@color/peer_light_blue"
+            app:cornerRadius="14dp"
+            app:elevation="0dp" />
 
-        <LinearLayout
+        <TextView
             android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:background="@color/peer_blue"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="16dp">
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Request a session"
+            android:textColor="@color/peer_navy"
+            android:textSize="28sp"
+            android:textStyle="bold" />
 
-            <ImageButton
-                android:id="@+id/btnBack"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Back"
-                android:src="@drawable/ic_back" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:text="Request a Session"
-                android:textColor="@color/white"
-                android:textSize="20sp"
-                android:textStyle="bold" />
-
-        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Choose a subject and a suitable time. Your tutor can then respond to your request."
+            android:textColor="#687386"
+            android:textSize="15sp"
+            android:lineSpacingExtra="3dp" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:background="@android:color/white"
+            android:elevation="3dp"
             android:orientation="vertical"
-            android:padding="25dp">
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Subject or module *"
+                android:textColor="@color/peer_navy"
+                android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/etSubject"
                 android:layout_width="match_parent"
-                android:layout_height="55dp"
-                android:background="@drawable/bg_input"
-                android:hint="Subject"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="#8A99AE" />
+                android:layout_height="56dp"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/peer_blue"
+                android:hint="e.g. Java programming"
+                android:inputType="textCapSentences"
+                android:paddingHorizontal="12dp"
+                android:singleLine="true"
+                android:textColor="@color/peer_navy"
+                android:textColorHint="#8793A5" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="Preferred date *"
+                android:textColor="@color/peer_navy"
+                android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/etDate"
                 android:layout_width="match_parent"
-                android:layout_height="55dp"
-                android:layout_marginTop="12dp"
-                android:background="@drawable/bg_input"
-                android:clickable="true"
-                android:focusable="false"
-                android:hint="Select date"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="#8A99AE" />
+                android:layout_height="56dp"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/peer_blue"
+                android:hint="YYYY-MM-DD"
+                android:inputType="date"
+                android:paddingHorizontal="12dp"
+                android:singleLine="true"
+                android:textColor="@color/peer_navy"
+                android:textColorHint="#8793A5" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="Preferred time *"
+                android:textColor="@color/peer_navy"
+                android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/etTime"
                 android:layout_width="match_parent"
-                android:layout_height="55dp"
-                android:layout_marginTop="12dp"
-                android:background="@drawable/bg_input"
-                android:clickable="true"
-                android:focusable="false"
-                android:hint="Select time"
-                android:paddingStart="16dp"
-                android:paddingEnd="16dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="#8A99AE" />
+                android:layout_height="56dp"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/peer_blue"
+                android:hint="HH:MM (24-hour time)"
+                android:inputType="time"
+                android:paddingHorizontal="12dp"
+                android:singleLine="true"
+                android:textColor="@color/peer_navy"
+                android:textColorHint="#8793A5" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="Message to your tutor (optional)"
+                android:textColor="@color/peer_navy"
+                android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/etMessage"
                 android:layout_width="match_parent"
-                android:layout_height="140dp"
-                android:layout_marginTop="12dp"
-                android:background="@drawable/bg_input"
-                android:gravity="top"
-                android:hint="Message to tutor"
-                android:padding="16dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="#8A99AE" />
+                android:layout_height="120dp"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/peer_blue"
+                android:gravity="top|start"
+                android:hint="Tell the tutor what you need help with..."
+                android:inputType="textCapSentences|textMultiLine"
+                android:padding="12dp"
+                android:textColor="@color/peer_navy"
+                android:textColorHint="#8793A5" />
 
-            <Button
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="* Required fields"
+                android:textColor="#687386"
+                android:textSize="12sp" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnRequest"
                 android:layout_width="match_parent"
-                android:layout_height="55dp"
-                android:layout_marginTop="25dp"
-                android:layout_marginBottom="10dp"
-                android:background="@drawable/bg_button_primary"
-                android:text="Send Request"
+                android:layout_height="58dp"
+                android:layout_marginTop="22dp"
+                android:text="Send session request"
                 android:textAllCaps="false"
-                android:textColor="@color/white"
                 android:textSize="16sp"
-                android:textStyle="bold" />
+                android:textStyle="bold"
+                app:backgroundTint="@color/peer_blue"
+                app:cornerRadius="16dp"
+                app:elevation="2dp" />
 
         </LinearLayout>
 

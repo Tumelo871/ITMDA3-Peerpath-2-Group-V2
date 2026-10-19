@@ -1,59 +1,74 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/peer_background"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:background="#F7FAFF">
 
+    <!-- Header -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="60dp"
-        android:background="@color/peer_blue"
-        android:gravity="center_vertical"
         android:orientation="horizontal"
+        android:gravity="center_vertical"
         android:paddingStart="8dp"
-        android:paddingEnd="16dp">
+        android:paddingEnd="12dp"
+        android:background="#0D5BE1">
 
         <ImageButton
             android:id="@+id/btnBack"
             android:layout_width="44dp"
             android:layout_height="44dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_back"
             android:contentDescription="Back"
-            android:src="@drawable/ic_back" />
+            android:background="?attr/selectableItemBackgroundBorderless"
+            app:tint="#FFFFFF" />
 
         <TextView
-            android:layout_width="wrap_content"
+            android:id="@+id/tvMessagesTitle"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:paddingStart="8dp"
             android:text="Messages"
-            android:textColor="@color/white"
+            android:textColor="#FFFFFF"
             android:textSize="20sp"
             android:textStyle="bold" />
 
+        <Button
+            android:id="@+id/btnRefreshMessages"
+            android:layout_width="wrap_content"
+            android:layout_height="42dp"
+            android:text="Refresh"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#0848B5" />
+
     </LinearLayout>
 
-    <ScrollView
+    <!-- Loading indicator -->
+    <ProgressBar
+        android:id="@+id/messagesProgress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+    <!-- Conversation area -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <LinearLayout
+        <ScrollView
+            android:id="@+id/messageScroll"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="20dp">
-
-            <TextView
-                android:id="@+id/tvEmptyMessages"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:padding="30dp"
-                android:text="No conversations yet. Once a session is accepted you can chat here."
-                android:textColor="@color/text_secondary"
-                android:textSize="16sp"
-                android:visibility="gone" />
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:clipToPadding="false"
+            android:padding="8dp">
 
             <LinearLayout
                 android:id="@+id/messageListContainer"
@@ -61,8 +76,21 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical" />
 
-        </LinearLayout>
+        </ScrollView>
 
-    </ScrollView>
+        <!-- Displayed when no conversations exist or loading fails -->
+        <TextView
+            android:id="@+id/tvEmptyMessages"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:padding="28dp"
+            android:text="No conversations yet. An accepted tutoring session will appear here."
+            android:textColor="#526581"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+    </FrameLayout>
 
 </LinearLayout>

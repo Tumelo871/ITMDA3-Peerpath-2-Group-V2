@@ -1,40 +1,97 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/peer_background">
+    android:background="@color/peer_background"
+    android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:padding="20dp">
 
-        <!-- HEADER -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnBack"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="← Back"
+            android:textColor="@color/peer_dark_blue"
+            app:backgroundTint="@color/peer_light_blue"
+            app:cornerRadius="14dp"
+            app:elevation="0dp" />
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:background="@color/peer_blue"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="8dp"
-            android:paddingEnd="16dp">
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@android:color/white"
+            android:elevation="3dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:padding="24dp">
 
-            <ImageButton
-                android:id="@+id/btnBack"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Back"
-                android:src="@drawable/ic_back" />
+            <ImageView
+                android:id="@+id/ivTutorPhoto"
+                android:layout_width="112dp"
+                android:layout_height="112dp"
+                android:background="@color/peer_light_blue"
+                android:contentDescription="Tutor profile picture"
+                android:padding="8dp"
+                android:scaleType="centerCrop"
+                android:src="@android:drawable/ic_menu_myplaces" />
+
+            <TextView
+                android:id="@+id/tvTutorName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:text="Tutor name"
+                android:textColor="@color/peer_navy"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvTutorSubject"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="Subjects and modules"
+                android:textColor="@color/peer_dark_blue"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/tvTutorRating"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center"
+                android:text="⭐ No ratings yet"
+                android:textColor="#8A6200"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tvTutorLevel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@color/peer_light_blue"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="8dp"
+                android:text="Level 1"
+                android:textColor="@color/peer_dark_blue"
+                android:textStyle="bold" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:text="Tutor Profile"
-                android:textColor="@color/white"
-                android:textSize="20sp"
+                android:layout_marginTop="10dp"
+                android:text="✓ Verified PeerPath Tutor"
+                android:textColor="#16804A"
+                android:textSize="13sp"
                 android:textStyle="bold" />
 
         </LinearLayout>
@@ -42,130 +99,105 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@android:color/white"
+            android:elevation="2dp"
             android:orientation="vertical"
-            android:padding="25dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_subject_card"
-                android:orientation="vertical">
-
-                <TextView
-                    android:id="@+id/tvTutorName"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Tutor Name"
-                    android:textColor="@color/text_primary"
-                    android:textSize="26sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tvTutorSubject"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Subject"
-                    android:textColor="@color/peer_blue"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tvTutorRating"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="⭐ New tutor"
-                    android:textColor="@color/peer_yellow"
-                    android:textSize="17sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tvTutorLevel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Level 1"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="14sp" />
-
-            </LinearLayout>
+            android:padding="20dp">
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
                 android:text="About the tutor"
-                android:textColor="@color/text_primary"
-                android:textSize="20sp"
+                android:textColor="@color/peer_navy"
+                android:textSize="19sp"
                 android:textStyle="bold" />
 
-            <LinearLayout
+            <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:background="@drawable/bg_subject_card"
-                android:orientation="vertical">
-
-                <TextView
-                    android:id="@+id/tvTutorBio"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Tutor biography"
-                    android:textColor="@color/text_primary"
-                    android:textSize="16sp"
-                    android:lineSpacingMultiplier="1.15" />
-
-                <TextView
-                    android:id="@+id/tvTutorExperience"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="15dp"
-                    android:text="Experience"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="15sp" />
-
-            </LinearLayout>
+                android:layout_marginTop="16dp"
+                android:text="Biography"
+                android:textColor="@color/peer_dark_blue"
+                android:textStyle="bold" />
 
             <TextView
-                android:layout_width="wrap_content"
+                android:id="@+id/tvTutorBio"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
-                android:text="Reviews"
-                android:textColor="@color/text_primary"
-                android:textSize="20sp"
+                android:layout_marginTop="6dp"
+                android:lineSpacingExtra="4dp"
+                android:text="Tutor biography will appear here."
+                android:textColor="#505D70"
+                android:textSize="15sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="Experience"
+                android:textColor="@color/peer_dark_blue"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvTutorExperience"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:lineSpacingExtra="4dp"
+                android:text="Tutor experience will appear here."
+                android:textColor="#505D70"
+                android:textSize="15sp" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@android:color/white"
+            android:elevation="2dp"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Learner reviews"
+                android:textColor="@color/peer_navy"
+                android:textSize="19sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tvNoReviews"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="12dp"
                 android:text="No reviews yet."
-                android:textColor="@color/text_secondary"
-                android:textSize="15sp" />
+                android:textColor="#687386"
+                android:textSize="14sp" />
 
             <LinearLayout
                 android:id="@+id/reviewContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
                 android:orientation="vertical" />
 
-            <Button
-                android:id="@+id/btnBookSession"
-                android:layout_width="match_parent"
-                android:layout_height="55dp"
-                android:layout_marginTop="30dp"
-                android:layout_marginBottom="10dp"
-                android:background="@drawable/bg_button_primary"
-                android:text="Request a Session"
-                android:textAllCaps="false"
-                android:textColor="@color/white"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-
         </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnBookSession"
+            android:layout_width="match_parent"
+            android:layout_height="58dp"
+            android:layout_marginTop="22dp"
+            android:layout_marginBottom="24dp"
+            android:text="Request a tutoring session"
+            android:textAllCaps="false"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:backgroundTint="@color/peer_blue"
+            app:cornerRadius="16dp"
+            app:elevation="2dp" />
 
     </LinearLayout>
 

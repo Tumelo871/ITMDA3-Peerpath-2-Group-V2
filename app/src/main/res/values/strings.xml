@@ -8,4 +8,17 @@
     <string name="leaderboard_your_position">Your position will appear here</string>
     <string name="leaderboard_loading">Loading leaderboard...</string>
 
+
+
+        <string name="admin_title">PeerPath Admin</string>
+        <string name="admin_subtitle">Administrator workspace</string>
+        <string name="admin_tutor_applications">Tutor applications</string>
+        <string name="admin_manage_users">Manage users</string>
+        <string name="admin_logout">Log out</string>
+        <string name="admin_pending_title">Pending tutor applications</string>
+        <string name="admin_ready">Ready</string>
+
+
+
+
 </resources>

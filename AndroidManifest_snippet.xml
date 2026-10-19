@@ -1,0 +1,4 @@
+<!-- Add this activity inside the existing <application> element in AndroidManifest.xml. -->
+<activity
+    android:name="com.example.peerpath.ui.resources.ResourceRepositoryActivity"
+    android:exported="false" />

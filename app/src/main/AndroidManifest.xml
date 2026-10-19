@@ -13,6 +13,18 @@
             android:name=".BadgesActivity"
             android:exported="false" />
 
+        <activity
+            android:name="com.example.peerpath.ChatActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name="com.example.peerpath.ui.resources.ResourceRepositoryActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".AdminReviewActivity"
+            android:exported="false" />
 
         <activity
             android:name=".BecomeTutorActivity"
@@ -30,12 +42,28 @@
             android:name=".RateTutorActivity"
             android:exported="false" />
 
+
+
         <activity
-            android:name=".NotificationActivity"
+            android:name=".LearnerDashboardActivity"
             android:exported="false" />
 
         <activity
-            android:name=".ChatActivity"
+            android:name=".TutorDashboardActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".AdminDashboardActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".TutorPendingActivity"
+            android:exported="false" />
+
+
+
+        <activity
+            android:name=".NotificationActivity"
             android:exported="false" />
 
         <activity
@@ -77,6 +105,7 @@
         <activity
             android:name=".LoginActivity"
             android:exported="false" />
+
 
         <activity
             android:name=".MainActivity"
