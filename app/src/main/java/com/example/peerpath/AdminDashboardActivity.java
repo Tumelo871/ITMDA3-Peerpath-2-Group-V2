@@ -2,6 +2,8 @@ package com.example.peerpath;
 
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.ActivityNotFoundException;
+import android.net.Uri;
 import android.graphics.Typeface;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -19,8 +21,19 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.example.peerpath.supabase.SupabaseApi;
+import com.example.peerpath.SupabaseConfig;
 import org.json.JSONArray;
 import org.json.JSONObject;
+
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 /** One admin dashboard. Applications and users render inside this Activity; no second admin screen. */
 public class AdminDashboardActivity extends RoleDashboardBaseActivity {
@@ -31,9 +44,12 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
     private LinearLayout content;
     private TextView title, status;
     private ProgressBar progress;
-    private Button applicationsButton, usersButton, reviewsButton, materialsButton, sponsorApprovalsButton;
+    private Button applicationsButton, usersButton, reviewsButton, materialsButton;
     private boolean requestInProgress = false;
+    private boolean logoutInProgress = false;
     private String currentScreen = SCREEN_APPLICATIONS;
+    private final OkHttpClient proofHttp = new OkHttpClient();
+    private static final String EVIDENCE_BUCKET = "tutor-evidence";
 
     @Override protected int layoutId() { return R.layout.activity_admin_dashboard; }
     @Override protected String requiredRole() { return "admin"; }
@@ -45,26 +61,26 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
         usersButton = findViewById(R.id.btnAdminUsers);
         reviewsButton = findViewById(R.id.btnAdminReviewFollowups);
         materialsButton = findViewById(R.id.btnAdminTutorMaterials);
-        sponsorApprovalsButton = findViewById(R.id.btnAdminSponsorApprovals);
         status = findViewById(R.id.txtAdminStatus);
         progress = findViewById(R.id.adminProgress);
         content = findViewById(R.id.adminContent);
         title = findViewById(R.id.txtAdminSectionTitle);
-        View logout = findViewById(R.id.btnAdminLogout);
+        Button logout = findViewById(R.id.btnAdminLogout);
 
         styleButton(applicationsButton);
         styleButton(usersButton);
         styleButton(reviewsButton);
         styleButton(materialsButton);
-        styleButton(sponsorApprovalsButton);
-        if (logout instanceof Button) styleButton((Button) logout);
+        styleButton(logout);
 
         if (applicationsButton != null) applicationsButton.setOnClickListener(v -> loadApplications());
         if (usersButton != null) usersButton.setOnClickListener(v -> loadUsers());
         if (reviewsButton != null) reviewsButton.setOnClickListener(v -> loadNegativeReviews());
         if (materialsButton != null) materialsButton.setOnClickListener(v -> openTutorMaterials());
-        if (sponsorApprovalsButton != null) sponsorApprovalsButton.setOnClickListener(v -> openSponsorApprovals());
-        if (logout != null) logout.setOnClickListener(v -> confirmLogout());
+        if (logout != null) {
+            logout.setEnabled(true);
+            logout.setOnClickListener(v -> confirmLogout());
+        }
 
         if (!SupabaseApi.isLoggedIn()) {
             goToLogin();
@@ -122,12 +138,6 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
                 runOnUiThread(() -> { setLoading(false, "Could not load applications."); showError(message); });
             }
         });
-    }
-
-    private void openSponsorApprovals() {
-        Intent intent = new Intent(AdminDashboardActivity.this, SponsorActivity.class);
-        intent.putExtra("sponsor_admin_mode", true);
-        startActivity(intent);
     }
 
     private void openTutorMaterials() {
@@ -219,31 +229,128 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
     private void addApplicationCard(JSONObject app) {
         String id = first(app, "id", "application_id");
         String tutorId = first(app, "tutor_id", "user_id");
-        LinearLayout card = card();
-        card.addView(text("Tutor application", 18, 0xFF082B6F, true));
         String name = first(app, "tutor_name", "full_name", "name", "display_name");
         String email = first(app, "tutor_email", "email");
         String modules = first(app, "module_codes", "modules");
         String evidence = first(app, "evidence_path", "evidence_url");
+        String appStatus = first(app, "status");
+
+        LinearLayout card = card();
+        card.addView(text("Tutor application", 18, 0xFF082B6F, true));
         addLine(card, "Tutor: " + (name.isEmpty() ? "Name not supplied" : name));
         if (!email.isEmpty()) addLine(card, "Email: " + email);
         addLine(card, "Modules: " + (modules.isEmpty() ? "Not supplied" : modules));
-        addLine(card, "Status: " + first(app, "status"));
-        if (!evidence.isEmpty()) addLine(card, "Evidence: " + evidence);
+        addLine(card, "Status: " + (appStatus.isEmpty() ? "Unknown" : appStatus));
+
+        final boolean hasEvidence = !evidence.trim().isEmpty();
+        Button viewProof = button("View Academic Proof");
+        viewProof.setEnabled(hasEvidence);
+        viewProof.setOnClickListener(v -> openAcademicProof(evidence, () ->
+                status.setText("Academic proof viewer opened.")));
+        card.addView(viewProof);
+
+        if (!hasEvidence) {
+            addLine(card, "ACADEMIC PROOF MISSING — this application must not be approved.");
+        } else {
+            addLine(card, "Open the submitted file and inspect it before making a decision.");
+        }
+
         if (id.isEmpty() || tutorId.isEmpty()) {
-            addLine(card, "Cannot review: the RPC response is missing application ID or tutor ID.");
+            addLine(card, "Cannot review: application ID or tutor ID is missing from the admin RPC response.");
         } else {
             LinearLayout actions = new LinearLayout(this);
             actions.setOrientation(LinearLayout.HORIZONTAL);
             Button approve = button("Approve");
             Button reject = button("Reject");
-            approve.setOnClickListener(v -> review(app, true));
+            // Allow the admin to submit a decision immediately. The database RPC remains
+            // responsible for enforcing admin permissions and evidence requirements.
+            approve.setEnabled(hasEvidence);
+            reject.setEnabled(true);
+
+            approve.setOnClickListener(v -> {
+                if (!hasEvidence) showError("Cannot approve without academic proof attached to this application.");
+                else review(app, true);
+            });
             reject.setOnClickListener(v -> review(app, false));
+
             actions.addView(approve, weightParams());
             actions.addView(reject, weightParams());
             card.addView(actions);
         }
         content.addView(card);
+    }
+
+    private void openAcademicProof(String evidencePath, Runnable onOpened) {
+        if (evidencePath == null || evidencePath.trim().isEmpty()) {
+            showError("No academic proof was submitted.");
+            return;
+        }
+        String token = SupabaseApi.token();
+        if (token == null || token.trim().isEmpty()) {
+            showError("Admin session expired. Sign in again.");
+            return;
+        }
+
+        status.setText("Preparing secure proof link…");
+        new Thread(() -> {
+            try {
+                JSONObject body = new JSONObject();
+                body.put("expiresIn", 120);
+                String requestUrl = SupabaseConfig.URL.trim() + "/storage/v1/object/sign/"
+                        + EVIDENCE_BUCKET + "/" + encodeStoragePath(evidencePath);
+
+                Request request = new Request.Builder()
+                        .url(requestUrl)
+                        .addHeader("apikey", SupabaseConfig.PUBLISHABLE_KEY.trim())
+                        .addHeader("Authorization", "Bearer " + token)
+                        .addHeader("Content-Type", "application/json")
+                        .post(RequestBody.create(body.toString(),
+                                MediaType.parse("application/json; charset=utf-8")))
+                        .build();
+
+                String responseText;
+                try (Response response = proofHttp.newCall(request).execute()) {
+                    responseText = response.body() == null ? "" : response.body().string();
+                    if (!response.isSuccessful()) {
+                        throw new IOException("Storage returned HTTP " + response.code()
+                                + ". Confirm the bucket exists and the admin has Storage SELECT permission.");
+                    }
+                }
+
+                JSONObject result = new JSONObject(responseText);
+                String signed = result.optString("signedURL", result.optString("signedUrl", ""));
+                if (signed.trim().isEmpty()) throw new IOException("Supabase returned no signed URL.");
+
+                final String finalUrl;
+                if (signed.startsWith("https://") || signed.startsWith("http://")) finalUrl = signed;
+                else if (signed.startsWith("/storage/v1/")) finalUrl = SupabaseConfig.URL.trim() + signed;
+                else if (signed.startsWith("/")) finalUrl = SupabaseConfig.URL.trim() + "/storage/v1" + signed;
+                else finalUrl = SupabaseConfig.URL.trim() + "/storage/v1/" + signed;
+
+                runOnUiThread(() -> {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(finalUrl));
+                        startActivity(Intent.createChooser(intent, "Open academic proof"));
+                        if (onOpened != null) onOpened.run();
+                    } catch (ActivityNotFoundException e) {
+                        showError("No app can open this file. Install a PDF or office document viewer.");
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> showError("Could not open academic proof: "
+                        + (e.getMessage() == null ? "Unknown Storage error." : e.getMessage())));
+            }
+        }).start();
+    }
+
+    private String encodeStoragePath(String path) throws Exception {
+        String[] parts = path.split("/");
+        StringBuilder result = new StringBuilder();
+        for (String part : parts) {
+            if (result.length() > 0) result.append("/");
+            result.append(URLEncoder.encode(part, StandardCharsets.UTF_8.name()).replace("+", "%20"));
+        }
+        return result.toString();
     }
 
     private void review(JSONObject app, boolean approve) {
@@ -479,20 +586,49 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
     }
 
     private void confirmLogout() {
-        new AlertDialog.Builder(this).setTitle("Log out?")
-                .setMessage("You will be signed out of PeerPath.")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Log out", (dialog, which) -> {
-                    SupabaseApi.clearSession();
-                    goToLogin();
-                }).show();
+        if (logoutInProgress) return;
+        new AlertDialog.Builder(this)
+                .setTitle("Log out?")
+                .setMessage("You will be signed out of PeerPath on this device.")
+                .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss())
+                .setPositiveButton("Log out", (dialog, which) -> performLogout())
+                .show();
+    }
+
+    /** Clears the locally stored Supabase session and removes protected screens from Back history. */
+    private void performLogout() {
+        if (logoutInProgress) return;
+        logoutInProgress = true;
+
+        Button logout = findViewById(R.id.btnAdminLogout);
+        if (logout != null) {
+            logout.setEnabled(false);
+            logout.setText("Signing out…");
+        }
+
+        // SupabaseApi stores the access token and user ID locally. Clear them before navigation.
+        try {
+            SupabaseApi.clearSession();
+        } catch (Exception ignored) {
+            // Navigation must still complete if local session cleanup throws.
+        }
+
+        Intent intent = new Intent(AdminDashboardActivity.this, LoginActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        finishAffinity();
     }
 
     private void goToLogin() {
-        Intent intent = new Intent(this, LoginActivity.class);
+        try {
+            SupabaseApi.clearSession();
+        } catch (Exception ignored) {
+            // Always leave the protected admin screen.
+        }
+        Intent intent = new Intent(AdminDashboardActivity.this, LoginActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
-        finish();
+        finishAffinity();
     }
 
     private void setSection(String value) { if (title != null) title.setText(value); }
@@ -504,7 +640,6 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
         if (usersButton != null) usersButton.setEnabled(!loading);
         if (reviewsButton != null) reviewsButton.setEnabled(!loading);
         if (materialsButton != null) materialsButton.setEnabled(!loading);
-        if (sponsorApprovalsButton != null) sponsorApprovalsButton.setEnabled(!loading);
     }
     private String first(JSONObject object, String... keys) {
         for (String key : keys) {

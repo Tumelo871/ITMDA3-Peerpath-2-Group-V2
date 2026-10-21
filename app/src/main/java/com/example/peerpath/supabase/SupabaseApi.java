@@ -1,3 +1,4 @@
+
 package com.example.peerpath.supabase;
 
 import android.content.Context;
@@ -892,37 +893,6 @@ public final class SupabaseApi {
         executeEmpty(request, callback);
     }
 
-
-    public static void getLearnerAnnouncements(JsonCallback callback) {
-        if (callback == null) return;
-
-        String problem = configurationError();
-        if (problem != null) {
-            callback.onError(problem);
-            return;
-        }
-
-        if (!isLoggedIn()) {
-            callback.onError("Please sign in again.");
-            return;
-        }
-
-        try {
-            Request request = authedRequest(
-                    SupabaseConfig.URL.trim()
-                            + "/rest/v1/rpc/peerpath_list_learner_announcements"
-            ).post(RequestBody.create("{}", JSON)).build();
-
-            executeArray(request, callback);
-
-        } catch (Exception e) {
-            callback.onError(messageOf(e));
-        }
-    }
-
-
-
-
     // -------------------- Resources --------------------
 
     public static void getResources(JsonCallback callback) {
@@ -991,84 +961,153 @@ public final class SupabaseApi {
         executeArray(request, callback);
     }
 
-    /** Returns the signed-in user's authorised review follow-up inbox. */
-    public static void getReviewFollowupInbox(JsonCallback callback) {
-        if (callback == null) return;
-        String problem = configurationError();
-        if (problem != null) { callback.onError(problem); return; }
-        if (!isLoggedIn()) { callback.onError("Please sign in again."); return; }
-        Request request;
-        try {
-            request = authedRequest(SupabaseConfig.URL.trim()
-                    + "/rest/v1/rpc/peerpath_review_followup_list_inbox")
-                    .post(RequestBody.create("{}", JSON)).build();
-        } catch (Exception e) { callback.onError(messageOf(e)); return; }
-        executeArray(request, callback);
+
+    // -------------------- Learner announcements --------------------
+
+    public static void getLearnerAnnouncements(JsonCallback callback) {
+        rpcArray("peerpath_list_learner_announcements", new JSONObject(), callback);
     }
 
+    // -------------------- Review follow-up conversations --------------------
 
-    /** Load messages for one review follow-up conversation (learner or tutor). */
+    public static void getReviewFollowupInbox(JsonCallback callback) {
+        rpcArray("peerpath_review_followup_list_inbox", new JSONObject(), callback);
+    }
+
     public static void getReviewFollowupMessages(
             String reviewId, String audience, JsonCallback callback) {
-        if (callback == null) return;
-        String problem = configurationError();
-        if (problem != null) { callback.onError(problem); return; }
-        if (!isLoggedIn()) { callback.onError("Please sign in again."); return; }
-        if (blank(reviewId)) { callback.onError("Review ID is missing."); return; }
+        if (blank(reviewId)) { if (callback != null) callback.onError("Review ID is missing."); return; }
         if (!"learner".equals(audience) && !"tutor".equals(audience)) {
-            callback.onError("Conversation must be learner or tutor."); return;
+            if (callback != null) callback.onError("Conversation must be learner or tutor.");
+            return;
         }
-
         JSONObject body = new JSONObject();
         try {
             body.put("p_review_id", reviewId.trim());
             body.put("p_audience", audience);
         } catch (JSONException e) {
-            callback.onError("Could not prepare the conversation request."); return;
+            if (callback != null) callback.onError("Could not prepare the conversation request.");
+            return;
         }
-
-        Request request;
-        try {
-            request = authedRequest(SupabaseConfig.URL.trim()
-                    + "/rest/v1/rpc/peerpath_review_followup_list_messages")
-                    .post(RequestBody.create(body.toString(), JSON)).build();
-        } catch (Exception e) { callback.onError(messageOf(e)); return; }
-        executeArray(request, callback);
+        rpcArray("peerpath_review_followup_list_messages", body, callback);
     }
 
-    /** Send a message in the review's learner or tutor conversation. */
     public static void sendReviewFollowupMessage(
             String reviewId, String audience, String message, JsonCallback callback) {
-        if (callback == null) return;
-        String problem = configurationError();
-        if (problem != null) { callback.onError(problem); return; }
-        if (!isLoggedIn()) { callback.onError("Please sign in again."); return; }
-        if (blank(reviewId)) { callback.onError("Review ID is missing."); return; }
-        if (!"learner".equals(audience) && !"tutor".equals(audience)) {
-            callback.onError("Conversation must be learner or tutor."); return;
+        if (blank(reviewId) || blank(message)) {
+            if (callback != null) callback.onError("Review ID and message are required.");
+            return;
         }
-        if (blank(message)) { callback.onError("Write a message first."); return; }
         if (message.trim().length() > 4000) {
-            callback.onError("Messages must be 4,000 characters or fewer."); return;
+            if (callback != null) callback.onError("Messages must be 4,000 characters or fewer.");
+            return;
         }
-
+        if (!"learner".equals(audience) && !"tutor".equals(audience)) {
+            if (callback != null) callback.onError("Conversation must be learner or tutor.");
+            return;
+        }
         JSONObject body = new JSONObject();
         try {
             body.put("p_review_id", reviewId.trim());
             body.put("p_audience", audience);
             body.put("p_body", message.trim());
         } catch (JSONException e) {
-            callback.onError("Could not prepare your message."); return;
+            if (callback != null) callback.onError("Could not prepare the message.");
+            return;
         }
+        rpcArray("peerpath_review_followup_send_message", body, callback);
+    }
 
+    // -------------------- Sponsorship workflow --------------------
+
+    public static void getSponsorLearners(JsonCallback callback) {
+        rpcArray("peerpath_sponsor_list_learners", new JSONObject(), callback);
+    }
+
+    public static void getSponsorRequests(JsonCallback callback) {
+        rpcArray("peerpath_sponsor_list_requests", new JSONObject(), callback);
+    }
+
+    public static void requestSponsorLearner(String learnerId, EmptyCallback callback) {
+        if (blank(learnerId)) { if (callback != null) callback.onError("Select a learner first."); return; }
+        JSONObject body = new JSONObject();
+        try { body.put("p_learner_id", learnerId.trim()); }
+        catch (JSONException e) { if (callback != null) callback.onError("Could not prepare the request."); return; }
+        rpcEmpty("peerpath_sponsor_request", body, callback);
+    }
+
+    public static void approveSponsorRequest(String requestId, EmptyCallback callback) {
+        if (blank(requestId)) { if (callback != null) callback.onError("Request ID is missing."); return; }
+        JSONObject body = new JSONObject();
+        try { body.put("p_request_id", requestId.trim()); }
+        catch (JSONException e) { if (callback != null) callback.onError("Could not prepare approval."); return; }
+        rpcEmpty("peerpath_sponsor_approve", body, callback);
+    }
+
+    public static void rejectSponsorRequest(String requestId, String reason, EmptyCallback callback) {
+        if (blank(requestId) || blank(reason)) {
+            if (callback != null) callback.onError("Request ID and rejection reason are required.");
+            return;
+        }
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_request_id", requestId.trim());
+            body.put("p_reason", reason.trim());
+        } catch (JSONException e) {
+            if (callback != null) callback.onError("Could not prepare rejection.");
+            return;
+        }
+        rpcEmpty("peerpath_sponsor_reject", body, callback);
+    }
+
+    public static void revokeSponsorLink(String linkId, String reason, EmptyCallback callback) {
+        if (blank(linkId) || blank(reason)) {
+            if (callback != null) callback.onError("Sponsorship ID and revocation reason are required.");
+            return;
+        }
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_link_id", linkId.trim());
+            body.put("p_reason", reason.trim());
+        } catch (JSONException e) {
+            if (callback != null) callback.onError("Could not prepare revocation.");
+            return;
+        }
+        rpcEmpty("peerpath_sponsor_revoke", body, callback);
+    }
+
+    /**
+     * Shared RPC helpers. The SQL functions must exist in Supabase and enforce
+     * role/ownership checks themselves; client-side checks never replace RLS.
+     */
+    private static void rpcArray(String functionName, JSONObject body, JsonCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("Please sign in again."); return; }
         Request request;
         try {
-            request = authedRequest(SupabaseConfig.URL.trim()
-                    + "/rest/v1/rpc/peerpath_review_followup_send_message")
-                    .post(RequestBody.create(body.toString(), JSON)).build();
+            request = authedRequest(SupabaseConfig.URL.trim() + "/rest/v1/rpc/" + functionName)
+                    .post(RequestBody.create(body == null ? "{}" : body.toString(), JSON))
+                    .build();
         } catch (Exception e) { callback.onError(messageOf(e)); return; }
         executeArray(request, callback);
     }
+
+    private static void rpcEmpty(String functionName, JSONObject body, EmptyCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("Please sign in again."); return; }
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim() + "/rest/v1/rpc/" + functionName)
+                    .post(RequestBody.create(body == null ? "{}" : body.toString(), JSON))
+                    .build();
+        } catch (Exception e) { callback.onError(messageOf(e)); return; }
+        executeEmpty(request, callback);
+    }
+
 
     // -------------------- HTTP helpers --------------------
 
@@ -1566,102 +1605,6 @@ public final class SupabaseApi {
         getProfile(id, callback);
     }
 
-    // -------------------- Sponsor workflow --------------------
-
-    public static void getSponsorLearners(JsonCallback callback) {
-        if (callback == null) return;
-        if (!isLoggedIn()) { callback.onError("Please sign in first."); return; }
-        Request request;
-        try {
-            request = authedRequest(SupabaseConfig.URL.trim()
-                    + "/rest/v1/rpc/peerpath_sponsor_list_learners")
-                    .post(RequestBody.create("{}", JSON)).build();
-        } catch (Exception e) { callback.onError(messageOf(e)); return; }
-        executeArray(request, callback);
-    }
-
-    public static void getSponsorRequests(JsonCallback callback) {
-        if (callback == null) return;
-        if (!isLoggedIn()) { callback.onError("Please sign in first."); return; }
-        Request request;
-        try {
-            request = authedRequest(SupabaseConfig.URL.trim()
-                    + "/rest/v1/rpc/peerpath_sponsor_list_requests")
-                    .post(RequestBody.create("{}", JSON)).build();
-        } catch (Exception e) { callback.onError(messageOf(e)); return; }
-        executeArray(request, callback);
-    }
-
-    public static void requestSponsorLearner(String learnerId, EmptyCallback callback) {
-        if (callback == null) return;
-        if (!isLoggedIn()) { callback.onError("Please sign in first."); return; }
-        if (blank(learnerId)) { callback.onError("Select a learner first."); return; }
-        JSONObject body = new JSONObject();
-        try { body.put("p_learner_id", learnerId); }
-        catch (JSONException e) { callback.onError("Could not prepare the request."); return; }
-        Request request;
-        try {
-            request = authedRequest(SupabaseConfig.URL.trim()
-                    + "/rest/v1/rpc/peerpath_sponsor_request")
-                    .post(RequestBody.create(body.toString(), JSON)).build();
-        } catch (Exception e) { callback.onError(messageOf(e)); return; }
-        executeEmpty(request, callback);
-    }
-
-    public static void approveSponsorRequest(String requestId, EmptyCallback callback) {
-        if (callback == null) return;
-        if (!isLoggedIn()) { callback.onError("Please sign in first."); return; }
-        if (blank(requestId)) { callback.onError("Request ID is missing."); return; }
-        JSONObject body = new JSONObject();
-        try { body.put("p_request_id", requestId); }
-        catch (JSONException e) { callback.onError("Could not prepare approval."); return; }
-        Request request;
-        try {
-            request = authedRequest(SupabaseConfig.URL.trim()
-                    + "/rest/v1/rpc/peerpath_sponsor_approve")
-                    .post(RequestBody.create(body.toString(), JSON)).build();
-        } catch (Exception e) { callback.onError(messageOf(e)); return; }
-        executeEmpty(request, callback);
-    }
-
-    public static void rejectSponsorRequest(String requestId, String reason, EmptyCallback callback) {
-        if (callback == null) return;
-        if (!isLoggedIn()) { callback.onError("Please sign in first."); return; }
-        if (blank(requestId)) { callback.onError("Request ID is missing."); return; }
-        if (blank(reason)) { callback.onError("Enter a rejection reason."); return; }
-        JSONObject body = new JSONObject();
-        try {
-            body.put("p_request_id", requestId);
-            body.put("p_reason", reason.trim());
-        } catch (JSONException e) { callback.onError("Could not prepare rejection."); return; }
-        Request request;
-        try {
-            request = authedRequest(SupabaseConfig.URL.trim()
-                    + "/rest/v1/rpc/peerpath_sponsor_reject")
-                    .post(RequestBody.create(body.toString(), JSON)).build();
-        } catch (Exception e) { callback.onError(messageOf(e)); return; }
-        executeEmpty(request, callback);
-    }
-
-    public static void revokeSponsorLink(String linkId, String reason, EmptyCallback callback) {
-        if (callback == null) return;
-        if (!isLoggedIn()) { callback.onError("Please sign in first."); return; }
-        if (blank(linkId)) { callback.onError("Active sponsorship ID is missing."); return; }
-        if (blank(reason)) { callback.onError("Enter a revocation reason."); return; }
-        JSONObject body = new JSONObject();
-        try {
-            body.put("p_link_id", linkId);
-            body.put("p_reason", reason.trim());
-        } catch (JSONException e) { callback.onError("Could not prepare revocation."); return; }
-        Request request;
-        try {
-            request = authedRequest(SupabaseConfig.URL.trim()
-                    + "/rest/v1/rpc/peerpath_sponsor_revoke")
-                    .post(RequestBody.create(body.toString(), JSON)).build();
-        } catch (Exception e) { callback.onError(messageOf(e)); return; }
-        executeEmpty(request, callback);
-    }
-
-
 }
+
 

@@ -115,7 +115,8 @@ public class LearnerAnnouncementsActivity extends Activity {
         statusText.setText("Loading announcements...");
         announcementList.removeAllViews();
 
-        SupabaseApi.getLearnerAnnouncements(new SupabaseApi.JsonCallback() {
+        SupabaseApi
+                .getLearnerAnnouncements(new SupabaseApi.JsonCallback() {
             @Override
             public void onSuccess(JSONArray data) {
                 runOnUiThread(() -> {
