@@ -185,6 +185,14 @@
                 android:textColor="@color/text_primary"
                 android:textSize="15sp" />
 
+            <RadioButton
+                android:id="@+id/rbSponsor"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Sponsor"
+                android:buttonTint="@color/text_primary"
+                android:textSize="15sp" />
+
         </RadioGroup>
 
         <!-- TUTOR DETAILS (shown when Tutor is selected) -->

@@ -31,7 +31,7 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
     private LinearLayout content;
     private TextView title, status;
     private ProgressBar progress;
-    private Button applicationsButton, usersButton, reviewsButton, materialsButton;
+    private Button applicationsButton, usersButton, reviewsButton, materialsButton, sponsorApprovalsButton;
     private boolean requestInProgress = false;
     private String currentScreen = SCREEN_APPLICATIONS;
 
@@ -45,6 +45,7 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
         usersButton = findViewById(R.id.btnAdminUsers);
         reviewsButton = findViewById(R.id.btnAdminReviewFollowups);
         materialsButton = findViewById(R.id.btnAdminTutorMaterials);
+        sponsorApprovalsButton = findViewById(R.id.btnAdminSponsorApprovals);
         status = findViewById(R.id.txtAdminStatus);
         progress = findViewById(R.id.adminProgress);
         content = findViewById(R.id.adminContent);
@@ -55,12 +56,14 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
         styleButton(usersButton);
         styleButton(reviewsButton);
         styleButton(materialsButton);
+        styleButton(sponsorApprovalsButton);
         if (logout instanceof Button) styleButton((Button) logout);
 
         if (applicationsButton != null) applicationsButton.setOnClickListener(v -> loadApplications());
         if (usersButton != null) usersButton.setOnClickListener(v -> loadUsers());
         if (reviewsButton != null) reviewsButton.setOnClickListener(v -> loadNegativeReviews());
         if (materialsButton != null) materialsButton.setOnClickListener(v -> openTutorMaterials());
+        if (sponsorApprovalsButton != null) sponsorApprovalsButton.setOnClickListener(v -> openSponsorApprovals());
         if (logout != null) logout.setOnClickListener(v -> confirmLogout());
 
         if (!SupabaseApi.isLoggedIn()) {
@@ -121,6 +124,12 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
         });
     }
 
+    private void openSponsorApprovals() {
+        Intent intent = new Intent(AdminDashboardActivity.this, SponsorActivity.class);
+        intent.putExtra("sponsor_admin_mode", true);
+        startActivity(intent);
+    }
+
     private void openTutorMaterials() {
         Intent intent = new Intent(this, MaterialsActivity.class);
         intent.putExtra("mine", false); // Admin can inspect the shared repository.
@@ -178,90 +187,19 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
         addLine(item, "Comment: " + (comment.isEmpty() ? "No written comment." : comment));
         addLine(item, "Follow-up status: " + displayCaseStatus.replace('_', ' '));
         Button details = button("View follow-up details");
-        details.setOnClickListener(v -> showReviewFollowupDialog(
-                review, tutor, reviewer, stars, comment, displayCaseStatus));
+        details.setOnClickListener(v -> {
+            String detailsText = "Tutor: " + (tutor.isEmpty() ? "Tutor" : tutor)
+                    + "\nRating: " + stars + "/5"
+                    + "\nReviewer: " + (reviewer.isEmpty() ? "Learner" : reviewer)
+                    + "\n\nComment: " + (comment.isEmpty() ? "No written comment." : comment)
+                    + "\n\nStatus: " + displayCaseStatus.replace('_', ' ')
+                    + "\n\nNext step: review the tutor's repository materials, then contact the learner through the private follow-up messaging workflow.";
+            new AlertDialog.Builder(this).setTitle("Review follow-up").setMessage(detailsText)
+                    .setPositiveButton("Open tutor materials", (d, w) -> openTutorMaterials())
+                    .setNegativeButton("Close", null).show();
+        });
         item.addView(details);
-
-        // Direct messaging actions remain visible on each negative-review card.
-        String reviewId = first(review, "review_id", "id");
-        if (reviewId.isEmpty()) {
-            addLine(item, "Messaging unavailable: review ID was not returned by Supabase.");
-        } else {
-            Button messageLearner = button("Message learner");
-            messageLearner.setOnClickListener(v ->
-                    openReviewChat(reviewId, "learner", tutor, stars, comment));
-            Button messageTutor = button("Message tutor");
-            messageTutor.setOnClickListener(v ->
-                    openReviewChat(reviewId, "tutor", tutor, stars, comment));
-            item.addView(messageLearner, new LinearLayout.LayoutParams(-1, -2));
-            item.addView(messageTutor, new LinearLayout.LayoutParams(-1, -2));
-        }
         content.addView(item);
-    }
-
-    private void showReviewFollowupDialog(JSONObject review, String tutor, String reviewer,
-                                          int stars, String comment, String caseStatus) {
-        String reviewId = first(review, "review_id", "id");
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(18);
-        panel.setPadding(pad, dp(8), pad, dp(8));
-
-        addLine(panel, "Tutor: " + (tutor.isEmpty() ? "Tutor" : tutor));
-        addLine(panel, "Rating: " + stars + "/5");
-        addLine(panel, "Reviewer: " + (reviewer.isEmpty() ? "Learner" : reviewer));
-        addLine(panel, "Comment: " + (comment.isEmpty() ? "No written comment." : comment));
-        addLine(panel, "Follow-up status: " + caseStatus.replace('_', ' '));
-        addLine(panel, "Choose who to contact. Learner and tutor conversations are separate.");
-
-        Button messageLearner = button("Message learner");
-        messageLearner.setOnClickListener(v -> {
-            if (reviewId.isEmpty()) {
-                showError("The review ID is missing from the admin review response.");
-                return;
-            }
-            openReviewChat(reviewId, "learner", tutor, stars, comment);
-        });
-        Button messageTutor = button("Message tutor");
-        messageTutor.setOnClickListener(v -> {
-            if (reviewId.isEmpty()) {
-                showError("The review ID is missing from the admin review response.");
-                return;
-            }
-            openReviewChat(reviewId, "tutor", tutor, stars, comment);
-        });
-        Button materials = button("Open tutor materials");
-        materials.setOnClickListener(v -> openTutorMaterials());
-
-        panel.addView(messageLearner, new LinearLayout.LayoutParams(-1, -2));
-        panel.addView(messageTutor, new LinearLayout.LayoutParams(-1, -2));
-        panel.addView(materials, new LinearLayout.LayoutParams(-1, -2));
-
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(panel);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Review follow-up")
-                .setView(scroll)
-                .setNegativeButton("Close", null)
-                .create();
-        dialog.show();
-        Button close = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
-        if (close != null) close.setTextColor(0xFF0D5BE1);
-    }
-
-    private void openReviewChat(String reviewId, String audience, String tutorName,
-                                int rating, String comment) {
-        if (reviewId == null || reviewId.trim().isEmpty()) {
-            showError("The review ID is missing from the admin review response.");
-            return;
-        }
-        Intent intent = new Intent(this, ReviewFollowupChatActivity.class);
-        intent.putExtra("review_id", reviewId);
-        intent.putExtra("audience", audience);
-        intent.putExtra("tutor_name", tutorName == null ? "" : tutorName);
-        intent.putExtra("rating", String.valueOf(rating));
-        intent.putExtra("review_comment", comment == null ? "" : comment);
-        startActivity(intent);
     }
 
     private boolean isPending(String value) {
@@ -566,6 +504,7 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
         if (usersButton != null) usersButton.setEnabled(!loading);
         if (reviewsButton != null) reviewsButton.setEnabled(!loading);
         if (materialsButton != null) materialsButton.setEnabled(!loading);
+        if (sponsorApprovalsButton != null) sponsorApprovalsButton.setEnabled(!loading);
     }
     private String first(JSONObject object, String... keys) {
         for (String key : keys) {
