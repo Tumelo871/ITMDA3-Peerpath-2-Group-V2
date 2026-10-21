@@ -75,6 +75,12 @@ public class BecomeTutorActivity extends AppCompatActivity {
         tvError = findViewById(R.id.tvError);
         progressSubmit = findViewById(R.id.progressSubmit);
 
+        // Keep the tutor verification actions consistent with PeerPath's blue theme.
+        styleActionButton(btnPickEvidence, false);
+        styleActionButton(btnSubmit, true);
+
+        btnBack.setColorFilter(android.graphics.Color.WHITE);
+
         btnBack.setOnClickListener(v -> finish());
 
         btnPickEvidence.setOnClickListener(v ->
@@ -342,6 +348,28 @@ public class BecomeTutorActivity extends AppCompatActivity {
         return encoded.toString();
     }
 
+    private void styleActionButton(Button button, boolean primary) {
+        button.setAllCaps(false);
+        button.setTextColor(android.graphics.Color.WHITE);
+        button.setTextSize(primary ? 16 : 15);
+        button.setTypeface(null, android.graphics.Typeface.BOLD);
+        button.setBackgroundTintList(
+                android.content.res.ColorStateList.valueOf(
+                        android.graphics.Color.rgb(13, 91, 225)
+                )
+        );
+        button.setMinHeight(56);
+        button.setPadding(
+                (int) (16 * getResources().getDisplayMetrics().density),
+                (int) (10 * getResources().getDisplayMetrics().density),
+                (int) (16 * getResources().getDisplayMetrics().density),
+                (int) (10 * getResources().getDisplayMetrics().density)
+        );
+        button.setElevation(
+                2 * getResources().getDisplayMetrics().density
+        );
+    }
+
     private void setLoading(boolean loading) {
         progressSubmit.setVisibility(loading ? View.VISIBLE : View.GONE);
         btnSubmit.setEnabled(!loading);
@@ -354,5 +382,3 @@ public class BecomeTutorActivity extends AppCompatActivity {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
 }
-
-

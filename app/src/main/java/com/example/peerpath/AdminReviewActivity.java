@@ -23,6 +23,7 @@ public class AdminReviewActivity extends Activity {
     private TextView status;
     private static final String SCREEN_APPLICATIONS = "applications";
     private static final String SCREEN_USERS = "users";
+    private static final String SCREEN_NEGATIVE_REVIEWS = "negative_reviews";
     private String currentScreen = SCREEN_APPLICATIONS;
     private boolean requestInProgress = false;
 
@@ -39,10 +40,14 @@ public class AdminReviewActivity extends Activity {
         String requested = getIntent().getStringExtra("admin_screen");
         if (SCREEN_USERS.equals(requested)) {
             currentScreen = SCREEN_USERS;
+        } else if (SCREEN_NEGATIVE_REVIEWS.equals(requested)) {
+            currentScreen = SCREEN_NEGATIVE_REVIEWS;
         }
         buildScreen();
         if (SCREEN_USERS.equals(currentScreen)) {
             loadUsers();
+        } else if (SCREEN_NEGATIVE_REVIEWS.equals(currentScreen)) {
+            loadNegativeReviews();
         } else {
             loadApplications();
         }
@@ -65,9 +70,18 @@ public class AdminReviewActivity extends Activity {
         applications.setOnClickListener(v -> loadApplications());
         Button users = makeButton("Manage users");
         users.setOnClickListener(v -> loadUsers());
+        Button reviews = makeButton("Negative reviews");
+        reviews.setOnClickListener(v -> loadNegativeReviews());
         nav.addView(applications, weightParams());
         nav.addView(users, weightParams());
         root.addView(nav);
+
+        LinearLayout reviewNav = new LinearLayout(this);
+        reviewNav.setOrientation(LinearLayout.HORIZONTAL);
+        Button reviewFollowups = makeButton("Review follow-ups");
+        reviewFollowups.setOnClickListener(v -> loadNegativeReviews());
+        reviewNav.addView(reviewFollowups, weightParams());
+        root.addView(reviewNav);
 
         Button logout = makeButton("Log out");
         logout.setOnClickListener(v -> new AlertDialog.Builder(this)
@@ -219,6 +233,205 @@ public class AdminReviewActivity extends Activity {
                 .show();
     }
 
+
+    private void loadNegativeReviews() {
+        currentScreen = SCREEN_NEGATIVE_REVIEWS;
+        title.setText("Negative review follow-ups");
+        if (requestInProgress) return;
+        requestInProgress = true;
+        status.setText("Loading negative reviews...");
+        content.removeAllViews();
+
+        SupabaseApi.getAdminNegativeReviews(new SupabaseApi.JsonCallback() {
+            @Override
+            public void onSuccess(JSONArray data) {
+                runOnUiThread(() -> {
+                    requestInProgress = false;
+                    content.removeAllViews();
+                    int count = data == null ? 0 : data.length();
+                    status.setText("Negative reviews requiring follow-up: " + count);
+                    if (count == 0) {
+                        addMessage("No negative reviews were returned. Check the admin RPC and ensure it returns review_id, tutor_id, rating, comment, reviewer_name and tutor_name.");
+                        return;
+                    }
+                    for (int i = 0; i < data.length(); i++) {
+                        JSONObject review = data.optJSONObject(i);
+                        if (review != null) addNegativeReviewCard(review);
+                    }
+                });
+            }
+
+            @Override
+            public void onError(String message) {
+                runOnUiThread(() -> {
+                    requestInProgress = false;
+                    status.setText("Could not load negative reviews.");
+                    showError(message);
+                });
+            }
+        });
+    }
+
+    private void addNegativeReviewCard(JSONObject review) {
+        String reviewId = first(review, "review_id", "id");
+        String tutorId = first(review, "tutor_id");
+        String tutorName = first(review, "tutor_name", "full_name");
+        String reviewerName = first(review, "reviewer_name", "student_name");
+        String ratingValue = first(review, "rating");
+        String comment = first(review, "comment", "review_comment");
+        String state = first(review, "followup_status", "status");
+
+        LinearLayout card = makeCard();
+        card.addView(makeText("★ Rating: " + (ratingValue.isEmpty() ? "—" : ratingValue)
+                + "/5", 17, 0xFF082B6F, true));
+        addLine(card, "Tutor: " + (tutorName.isEmpty() ? "Tutor" : tutorName));
+        addLine(card, "Reviewer: " + (reviewerName.isEmpty() ? "Anonymous learner" : reviewerName));
+        addLine(card, "Comment: " + (comment.isEmpty() ? "No comment provided." : comment));
+        addLine(card, "Follow-up status: " + (state.isEmpty() ? "open" : state));
+
+        Button details = makeButton("View follow-up details");
+        details.setOnClickListener(v -> showFollowupDialog(
+                reviewId, tutorId, tutorName, reviewerName, ratingValue, comment,
+                state.isEmpty() ? "open" : state));
+        card.addView(details);
+
+        // Keep quick actions visible on the review card as well as in the details dialog.
+        if (reviewId.isEmpty()) {
+            addLine(card, "Messaging unavailable: the admin RPC did not return a review ID.");
+        } else {
+            LinearLayout actions = new LinearLayout(this);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            Button messageLearner = makeButton("Message learner");
+            messageLearner.setOnClickListener(v -> openReviewChat(
+                    reviewId, "learner", tutorName, ratingValue, comment));
+            Button messageTutor = makeButton("Message tutor");
+            messageTutor.setOnClickListener(v -> openReviewChat(
+                    reviewId, "tutor", tutorName, ratingValue, comment));
+            actions.addView(messageLearner, weightParams());
+            actions.addView(messageTutor, weightParams());
+            card.addView(actions);
+        }
+
+        if (!tutorId.isEmpty()) {
+            Button materials = makeButton("View tutor repository materials");
+            materials.setOnClickListener(v -> openTutorMaterials(tutorId));
+            card.addView(materials);
+        }
+        content.addView(card);
+    }
+
+    private void showFollowupDialog(String reviewId, String tutorId, String tutorName,
+                                    String reviewerName, String ratingValue, String comment,
+                                    String state) {
+        // Put the actions inside the custom dialog content. Do not rely on
+        // AlertDialog's small bottom button row, which can hide actions on phones.
+        ScrollView dialogScroll = new ScrollView(this);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(20), dp(8), dp(20), dp(12));
+
+        panel.addView(makeText("Tutor: " + (tutorName.isEmpty() ? "Tutor" : tutorName),
+                14, 0xFF17243A, false));
+        panel.addView(makeText("Rating: " + (ratingValue.isEmpty() ? "—" : ratingValue) + "/5",
+                14, 0xFF17243A, false));
+        panel.addView(makeText("Reviewer: " + (reviewerName.isEmpty()
+                        ? "Anonymous learner" : reviewerName),
+                14, 0xFF17243A, false));
+        panel.addView(makeText("Comment: " + (comment.isEmpty()
+                        ? "No comment provided." : comment),
+                14, 0xFF17243A, false));
+        panel.addView(makeText("Status: " + state, 14, 0xFF52627A, false));
+        panel.addView(makeText(
+                "Contact the learner and tutor in separate private conversations. " +
+                        "Never reveal an anonymous learner's identity to the tutor.",
+                13, 0xFF52627A, false));
+
+        Button learner = makeButton("Message learner");
+        learner.setOnClickListener(v -> {
+            if (reviewId == null || reviewId.trim().isEmpty()) {
+                showError("The review response did not include a review ID.");
+                return;
+            }
+            AlertDialog current = (AlertDialog) v.getTag();
+            if (current != null) current.dismiss();
+            openReviewChat(reviewId, "learner", tutorName, ratingValue, comment);
+        });
+        Button tutor = makeButton("Message tutor");
+        tutor.setOnClickListener(v -> {
+            if (reviewId == null || reviewId.trim().isEmpty()) {
+                showError("The review response did not include a review ID.");
+                return;
+            }
+            AlertDialog current = (AlertDialog) v.getTag();
+            if (current != null) current.dismiss();
+            openReviewChat(reviewId, "tutor", tutorName, ratingValue, comment);
+        });
+        Button materials = makeButton("Open tutor materials");
+        materials.setOnClickListener(v -> {
+            if (tutorId == null || tutorId.trim().isEmpty()) {
+                showError("The review response did not include the tutor ID.");
+                return;
+            }
+            AlertDialog current = (AlertDialog) v.getTag();
+            if (current != null) current.dismiss();
+            openTutorMaterials(tutorId);
+        });
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.VERTICAL);
+        buttons.setPadding(0, dp(8), 0, 0);
+        buttons.addView(learner, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        buttons.addView(tutor, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        buttons.addView(materials, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        panel.addView(buttons);
+
+        dialogScroll.addView(panel);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Review follow-up")
+                .setView(dialogScroll)
+                .setNegativeButton("Close", null)
+                .create();
+
+        learner.setTag(dialog);
+        tutor.setTag(dialog);
+        materials.setTag(dialog);
+
+        dialog.setOnShowListener(ignored -> {
+            Button close = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+            if (close != null) close.setTextColor(0xFF0D5BE1);
+        });
+        dialog.show();
+    }
+
+    private void openTutorMaterials(String tutorId) {
+        try {
+            Intent intent = new Intent(this, com.example.peerpath.ui.resources.ResourceRepositoryActivity.class);
+            intent.putExtra("tutorId", tutorId);
+            intent.putExtra("adminReviewFollowup", true);
+            startActivity(intent);
+        } catch (Exception e) {
+            showError("Could not open tutor repository materials. Check that the repository screen is available.");
+        }
+    }
+
+    private void openReviewChat(String reviewId, String audience,
+                                String tutorName, String ratingValue, String comment) {
+        if (reviewId == null || reviewId.trim().isEmpty()) {
+            showError("The review ID is missing from the admin review response.");
+            return;
+        }
+        Intent intent = new Intent(this, ReviewFollowupChatActivity.class);
+        intent.putExtra("review_id", reviewId);
+        intent.putExtra("audience", audience);
+        intent.putExtra("tutor_name", tutorName);
+        intent.putExtra("rating", ratingValue);
+        intent.putExtra("review_comment", comment);
+        startActivity(intent);
+    }
+
     private void loadUsers() {
         currentScreen = SCREEN_USERS;
         title.setText("Manage users");
@@ -321,6 +534,8 @@ public class AdminReviewActivity extends Activity {
         Button button = new Button(this);
         button.setText(value);
         button.setAllCaps(false);
+        button.setTextColor(0xFFFFFFFF);
+        button.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF0D5BE1));
         return button;
     }
 
@@ -348,4 +563,3 @@ public class AdminReviewActivity extends Activity {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
 }
-

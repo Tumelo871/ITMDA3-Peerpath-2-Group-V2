@@ -338,6 +338,26 @@ public final class SupabaseApi {
                 + ")&select=*&order=created_at.desc", callback);
     }
 
+
+    public static void getMyReviews(JsonCallback callback) {
+        if (callback == null) return;
+
+        String id = userId();
+
+        if (blank(id) || blank(token())) {
+            callback.onError("Please sign in to view your reviews.");
+            return;
+        }
+
+        dbGet(
+                "reviews",
+                "student_id=eq." + encode(id)
+                        + "&select=session_id",
+                callback
+        );
+    }
+
+
     public static void getAcceptedSessions(JsonCallback callback) {
         String id = userId();
         if (blank(id)) { callback.onError("You are not logged in."); return; }
@@ -350,6 +370,65 @@ public final class SupabaseApi {
         if (blank(id)) { callback.onError("Please sign in to view tutor sessions."); return; }
         dbGet("sessions", "tutor_id=eq." + encode(id)
                 + "&status=eq.accepted&select=*&order=session_date.asc,session_time.asc", callback);
+    }
+
+    /**
+     * Loads this signed-in tutor's accepted or completed sessions for announcements.
+     * The caller should deduplicate learner_id values before sending announcements.
+     */
+    public static void getTutorAnnouncementSessions(JsonCallback callback) {
+        if (callback == null) return;
+        String id = userId();
+        if (blank(id) || blank(token())) {
+            callback.onError("Please sign in to load your learners.");
+            return;
+        }
+        dbGet("sessions", "tutor_id=eq." + encode(id)
+                + "&status=in.(accepted,completed)&select=id,learner_id,status"
+                + "&order=created_at.desc", callback);
+    }
+
+    /**
+     * Returns the learner name for a session belonging to the signed-in tutor.
+     * Calls public.peerpath_tutor_get_requester_name(p_session_id).
+     * The SQL function must verify session ownership using auth.uid().
+     */
+    public static void getTutorRequesterName(String sessionId, JsonCallback callback) {
+        if (callback == null) return;
+
+        String problem = configurationError();
+        if (problem != null) {
+            callback.onError(problem);
+            return;
+        }
+        if (!isLoggedIn() || blank(token())) {
+            callback.onError("Please sign in again.");
+            return;
+        }
+        if (blank(sessionId)) {
+            callback.onError("Session ID is missing.");
+            return;
+        }
+
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_session_id", sessionId.trim());
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the learner lookup.");
+            return;
+        }
+
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_tutor_get_requester_name")
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+        executeArray(request, callback);
     }
 
     public static void getPendingTutorRequests(JsonCallback callback) {
@@ -439,6 +518,42 @@ public final class SupabaseApi {
         dbPatch("notifications", "id=eq." + encode(notificationId), values, callback);
     }
 
+
+    /**
+     * Saves an announcement in the recipient's notifications.
+     * The notifications table's Row Level Security policy must permit this insert
+     * for an authenticated tutor who is allowed to contact that learner.
+     */
+    public static void sendAnnouncementNotification(
+            String studentId, String title, String message, EmptyCallback callback) {
+        if (callback == null) return;
+        if (!isLoggedIn()) {
+            callback.onError("You are not logged in. Please sign in again.");
+            return;
+        }
+        if (blank(studentId) || blank(title) || blank(message)) {
+            callback.onError("Student, title and announcement message are required.");
+            return;
+        }
+        if (message.trim().length() > 4000) {
+            callback.onError("Announcements must be 4,000 characters or fewer.");
+            return;
+        }
+
+        JSONObject row = new JSONObject();
+        try {
+            row.put("user_id", studentId.trim());
+            row.put("title", title.trim());
+            row.put("body", message.trim());
+            row.put("type", "announcement");
+            row.put("is_read", false);
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the announcement.");
+            return;
+        }
+        dbPost("notifications", row, callback);
+    }
+
     // -------------------- Tutor applications --------------------
 
     public static void submitTutorApplication(String moduleCodes, String evidencePath,
@@ -511,6 +626,107 @@ public final class SupabaseApi {
             return;
         }
         executeArray(request, callback);
+    }
+
+    /**
+     * Updates an eligible user's profile through the protected admin RPC.
+     * The database function must independently verify administrator access.
+     * This edits profile fields only; it does not change the Auth email/password.
+     */
+    public static void adminUpdateUser(
+            String targetUserId,
+            String fullName,
+            String studentNumber,
+            String faculty,
+            String role,
+            String verificationStatus,
+            EmptyCallback callback) {
+        if (callback == null) return;
+
+        if (blank(userId()) || blank(token())) {
+            callback.onError("Please sign in first.");
+            return;
+        }
+        if (blank(targetUserId) || blank(fullName) || blank(role)
+                || blank(verificationStatus)) {
+            callback.onError("Complete all required user fields.");
+            return;
+        }
+        if (!isConfigured()) {
+            callback.onError("Supabase is not configured.");
+            return;
+        }
+
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_user_id", targetUserId.trim());
+            body.put("p_full_name", fullName.trim());
+            body.put("p_student_number", studentNumber == null ? "" : studentNumber.trim());
+            body.put("p_faculty", faculty == null ? "" : faculty.trim());
+            body.put("p_role", role.trim().toLowerCase(java.util.Locale.ROOT));
+            body.put("p_verification_status", verificationStatus.trim());
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the user update.");
+            return;
+        }
+
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_admin_update_user")
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+        executeEmpty(request, callback);
+    }
+
+    /**
+     * Deletes a non-admin profile row through the protected admin RPC.
+     * IMPORTANT: this does not delete the Supabase Auth account in auth.users.
+     * Full Auth account deletion requires a trusted server-side Edge Function.
+     */
+    public static void adminDeleteUser(String targetUserId, EmptyCallback callback) {
+        if (callback == null) return;
+
+        if (blank(userId()) || blank(token())) {
+            callback.onError("Please sign in first.");
+            return;
+        }
+        if (blank(targetUserId)) {
+            callback.onError("User ID is required.");
+            return;
+        }
+        if (targetUserId.trim().equals(userId())) {
+            callback.onError("You cannot delete your own account.");
+            return;
+        }
+        if (!isConfigured()) {
+            callback.onError("Supabase is not configured.");
+            return;
+        }
+
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_user_id", targetUserId.trim());
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the delete request.");
+            return;
+        }
+
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_admin_delete_user")
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+        executeEmpty(request, callback);
     }
 
     /**
@@ -592,6 +808,90 @@ public final class SupabaseApi {
         executeEmpty(request, callback);
     }
 
+    // -------------------- Tutor announcements --------------------
+
+    /** Sends an announcement through a database RPC that validates tutor access. */
+    public static void sendTutorAnnouncement(String message, ObjectCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("Please sign in again."); return; }
+        if (blank(message)) { callback.onError("Write an announcement first."); return; }
+        if (message.trim().length() > 4000) {
+            callback.onError("Announcements must be 4,000 characters or fewer.");
+            return;
+        }
+
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_message", message.trim());
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the announcement.");
+            return;
+        }
+
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_send_announcement")
+                    .post(RequestBody.create(body.toString(), JSON)).build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+        executeObject(request, callback);
+    }
+
+    /** Loads only announcements belonging to the currently signed-in tutor. */
+    public static void getMyAnnouncements(JsonCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("Please sign in again."); return; }
+
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_list_my_announcements")
+                    .post(RequestBody.create("{}", JSON)).build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+        executeArray(request, callback);
+    }
+
+    /** Deletes an announcement through a database RPC that checks ownership. */
+    public static void deleteTutorAnnouncement(String announcementId, EmptyCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("Please sign in again."); return; }
+        if (blank(announcementId)) {
+            callback.onError("Announcement ID is missing.");
+            return;
+        }
+
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_announcement_id", announcementId.trim());
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the delete request.");
+            return;
+        }
+
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_delete_announcement")
+                    .post(RequestBody.create(body.toString(), JSON)).build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+        executeEmpty(request, callback);
+    }
+
     // -------------------- Resources --------------------
 
     public static void getResources(JsonCallback callback) {
@@ -660,6 +960,85 @@ public final class SupabaseApi {
         executeArray(request, callback);
     }
 
+    /** Returns the signed-in user's authorised review follow-up inbox. */
+    public static void getReviewFollowupInbox(JsonCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("Please sign in again."); return; }
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_review_followup_list_inbox")
+                    .post(RequestBody.create("{}", JSON)).build();
+        } catch (Exception e) { callback.onError(messageOf(e)); return; }
+        executeArray(request, callback);
+    }
+
+
+    /** Load messages for one review follow-up conversation (learner or tutor). */
+    public static void getReviewFollowupMessages(
+            String reviewId, String audience, JsonCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("Please sign in again."); return; }
+        if (blank(reviewId)) { callback.onError("Review ID is missing."); return; }
+        if (!"learner".equals(audience) && !"tutor".equals(audience)) {
+            callback.onError("Conversation must be learner or tutor."); return;
+        }
+
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_review_id", reviewId.trim());
+            body.put("p_audience", audience);
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the conversation request."); return;
+        }
+
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_review_followup_list_messages")
+                    .post(RequestBody.create(body.toString(), JSON)).build();
+        } catch (Exception e) { callback.onError(messageOf(e)); return; }
+        executeArray(request, callback);
+    }
+
+    /** Send a message in the review's learner or tutor conversation. */
+    public static void sendReviewFollowupMessage(
+            String reviewId, String audience, String message, JsonCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("Please sign in again."); return; }
+        if (blank(reviewId)) { callback.onError("Review ID is missing."); return; }
+        if (!"learner".equals(audience) && !"tutor".equals(audience)) {
+            callback.onError("Conversation must be learner or tutor."); return;
+        }
+        if (blank(message)) { callback.onError("Write a message first."); return; }
+        if (message.trim().length() > 4000) {
+            callback.onError("Messages must be 4,000 characters or fewer."); return;
+        }
+
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_review_id", reviewId.trim());
+            body.put("p_audience", audience);
+            body.put("p_body", message.trim());
+        } catch (JSONException e) {
+            callback.onError("Could not prepare your message."); return;
+        }
+
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_review_followup_send_message")
+                    .post(RequestBody.create(body.toString(), JSON)).build();
+        } catch (Exception e) { callback.onError(messageOf(e)); return; }
+        executeArray(request, callback);
+    }
+
     // -------------------- HTTP helpers --------------------
 
     private static String configurationError() {
@@ -667,6 +1046,141 @@ public final class SupabaseApi {
             return "Supabase configuration is missing or invalid. Check the project URL and publishable key.";
         }
         return null;
+    }
+
+
+    /**
+     * Submit a review for a completed session.
+     * The database validates the signed-in learner, session,
+     * rating and duplicate-review constraint.
+     */
+    public static void submitReview(
+            String sessionId,
+            float rating,
+            String comment,
+            boolean anonymous,
+            JsonCallback callback) {
+
+        if (callback == null) return;
+
+        String problem = configurationError();
+        if (problem != null) {
+            callback.onError(problem);
+            return;
+        }
+
+        if (!isLoggedIn()) {
+            callback.onError("Please sign in again.");
+            return;
+        }
+
+        if (sessionId == null || sessionId.trim().isEmpty()) {
+            callback.onError("Session ID is missing.");
+            return;
+        }
+
+        if (rating < 1 || rating > 5) {
+            callback.onError("Choose a rating between 1 and 5.");
+            return;
+        }
+
+        JSONObject body = new JSONObject();
+
+        try {
+            body.put("p_session_id", sessionId.trim());
+            body.put("p_rating", (double) rating);
+            body.put("p_comment", comment == null ? "" : comment.trim());
+            body.put("p_is_anonymous", anonymous);
+        } catch (JSONException e) {
+            callback.onError("Could not prepare your review.");
+            return;
+        }
+
+        Request request;
+
+        try {
+            request = authedRequest(
+                    SupabaseConfig.URL.trim()
+                            + "/rest/v1/rpc/peerpath_submit_review")
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+
+        executeArray(request, callback);
+    }
+
+    /**
+     * Load the safe, public-facing reviews for a tutor.
+     * The database function hides the identity of anonymous reviewers.
+     */
+    public static void getTutorReviews(
+            String tutorId,
+            JsonCallback callback) {
+
+        if (callback == null) return;
+
+        String problem = configurationError();
+        if (problem != null) {
+            callback.onError(problem);
+            return;
+        }
+
+        if (!isLoggedIn()) {
+            callback.onError("Please sign in again.");
+            return;
+        }
+
+        if (tutorId == null || tutorId.trim().isEmpty()) {
+            callback.onError("Tutor ID is missing.");
+            return;
+        }
+
+        JSONObject body = new JSONObject();
+
+        try {
+            body.put("p_tutor_id", tutorId.trim());
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the review request.");
+            return;
+        }
+
+        Request request;
+
+        try {
+            request = authedRequest(
+                    SupabaseConfig.URL.trim()
+                            + "/rest/v1/rpc/peerpath_get_tutor_reviews")
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+
+        executeArray(request, callback);
+    }
+
+
+    /** Admin-only RPC returning visible 1–2 star reviews for follow-up. */
+    public static void getAdminNegativeReviews(JsonCallback callback) {
+        if (callback == null) return;
+        String problem = configurationError();
+        if (problem != null) { callback.onError(problem); return; }
+        if (!isLoggedIn()) { callback.onError("Please sign in first."); return; }
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_admin_list_negative_reviews")
+                    .post(RequestBody.create("{}", JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+        executeArray(request, callback);
     }
 
     private static Request.Builder baseRequest(String url) {
@@ -1022,3 +1536,4 @@ public final class SupabaseApi {
     }
 
 }
+

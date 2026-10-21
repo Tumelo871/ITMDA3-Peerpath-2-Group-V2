@@ -1,6 +1,5 @@
 package com.example.peerpath;
 
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -23,8 +22,6 @@ import com.example.peerpath.supabase.SupabaseApi;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -45,6 +42,7 @@ public class MaterialsActivity extends AppCompatActivity {
     private final List<JSONObject> allMaterials = new ArrayList<>();
 
     private String pendingTitle, pendingSubject, pendingDescription;
+    private String pendingExternalLink = "";
     private AlertDialog pendingDialog;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -165,7 +163,7 @@ public class MaterialsActivity extends AppCompatActivity {
             open.setOnClickListener(v -> openLink(finalUrl));
             Ui.add(card, open, 8);
         } else {
-            Ui.add(card, Ui.text(this, "No file or link was attached to this resource.", 13, R.color.text_secondary, false), 8);
+            Ui.add(card, Ui.text(this, "This resource has no downloadable file yet. Please contact the tutor who uploaded it.", 13, R.color.text_secondary, false), 8);
         }
         if (mine && uid.equals(val(item, "owner_id"))) {
             Button delete = makeButton("Delete resource");
@@ -176,10 +174,20 @@ public class MaterialsActivity extends AppCompatActivity {
     }
 
     private Button makeButton(String text) {
-        Button b = new Button(this);
-        b.setText(text);
-        b.setAllCaps(false);
-        return b;
+        Button button = new Button(this);
+        button.setText(text);
+        button.setAllCaps(false);
+        button.setTextColor(android.graphics.Color.WHITE);
+        button.setTextSize(15);
+        button.setTypeface(null, android.graphics.Typeface.BOLD);
+        button.setBackgroundTintList(
+                android.content.res.ColorStateList.valueOf(
+                        android.graphics.Color.rgb(13, 91, 225)));
+        button.setMinHeight(Ui.dp(this, 48));
+        button.setPadding(
+                Ui.dp(this, 16), Ui.dp(this, 10),
+                Ui.dp(this, 16), Ui.dp(this, 10));
+        return button;
     }
 
     private void showAddDialog() {
@@ -229,8 +237,6 @@ public class MaterialsActivity extends AppCompatActivity {
         dialog.show();
     }
 
-    private String pendingExternalLink = "";
-
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode != REQUEST_PICK_FILE || resultCode != RESULT_OK || data == null || data.getData() == null) return;
@@ -257,23 +263,25 @@ public class MaterialsActivity extends AppCompatActivity {
     }
 
     private String getSupabasePublicUrl(String path) {
-        String base = SupabaseConfig.URL.trim();
-
-        if (base.endsWith("/")) {
+        String base = SupabaseConfig.URL == null ? "" : SupabaseConfig.URL.trim();
+        while (base.endsWith("/")) {
             base = base.substring(0, base.length() - 1);
         }
 
-        String encoded = path
-                .replace("%", "%25")
-                .replace(" ", "%20")
-                .replace("#", "%23")
-                .replace("?", "%3F");
+        // Encode each path segment separately so the slash between folders is preserved.
+        String[] parts = path.replace("\\", "/").split("/");
+        StringBuilder encoded = new StringBuilder();
+        for (String part : parts) {
+            if (encoded.length() > 0) encoded.append("/");
+            try {
+                encoded.append(java.net.URLEncoder.encode(part, "UTF-8")
+                        .replace("+", "%20"));
+            } catch (java.io.UnsupportedEncodingException ignored) {
+                encoded.append(part);
+            }
+        }
 
-        return base
-                + "/storage/v1/object/public/"
-                + STORAGE_BUCKET
-                + "/"
-                + encoded;
+        return base + "/storage/v1/object/public/" + STORAGE_BUCKET + "/" + encoded;
     }
 
     private String safeExtension(Uri uri) {
@@ -335,30 +343,37 @@ public class MaterialsActivity extends AppCompatActivity {
     }
 
     private void openLink(String link) {
-        if (link == null || link.trim().isEmpty()
-                || "null".equalsIgnoreCase(link.trim())) {
+        String value = link == null ? "" : link.trim();
+        if (value.isEmpty()
+                || "null".equalsIgnoreCase(value)
+                || "undefined".equalsIgnoreCase(value)) {
             Toast.makeText(this,
                     "This resource has no attached file or link. Ask the tutor to upload it again.",
                     Toast.LENGTH_LONG).show();
             return;
         }
 
+        // Older resource rows may store only the object path rather than a full URL.
+        if (!value.startsWith("https://") && !value.startsWith("http://")) {
+            value = getSupabasePublicUrl(value.startsWith("/") ? value.substring(1) : value);
+        }
+
         try {
-            String value = link.trim();
-
-            if (!value.startsWith("https://")
-                    && !value.startsWith("http://")) {
-                value = getSupabasePublicUrl(value);
-            }
-
             Uri uri = Uri.parse(value);
+            String scheme = uri.getScheme();
+            if (scheme == null
+                    || (!"https".equalsIgnoreCase(scheme)
+                    && !"http".equalsIgnoreCase(scheme))) {
+                Toast.makeText(this, "This resource link is invalid.", Toast.LENGTH_LONG).show();
+                return;
+            }
             Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-            startActivity(intent);
-
-        } catch (android.content.ActivityNotFoundException e) {
-            Toast.makeText(this,
-                    "No app is available to open this file.",
-                    Toast.LENGTH_LONG).show();
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                startActivity(intent);
+            } else {
+                Toast.makeText(this, "No app is available to open this resource.",
+                        Toast.LENGTH_LONG).show();
+            }
         } catch (Exception e) {
             Toast.makeText(this,
                     "Could not open the resource. Check its file URL.",
@@ -366,5 +381,16 @@ public class MaterialsActivity extends AppCompatActivity {
         }
     }
 
-    private String val(JSONObject obj, String key) { return obj == null ? "" : obj.optString(key, "").trim(); }
+    private String val(JSONObject obj, String key) {
+        if (obj == null || !obj.has(key) || obj.isNull(key)) return "";
+        String value = obj.optString(key, "").trim();
+        if (value.isEmpty()
+                || "null".equalsIgnoreCase(value)
+                || "undefined".equalsIgnoreCase(value)) {
+            return "";
+        }
+        return value;
+    }
 }
+
+

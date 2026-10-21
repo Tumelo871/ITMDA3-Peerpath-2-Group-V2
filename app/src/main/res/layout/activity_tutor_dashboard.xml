@@ -1,6 +1,6 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/peer_background" android:fillViewport="true">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
-        <!--  Same visual header style as the learner dashboard  -->
+        <!--   Same visual header style as the learner dashboard   -->
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
             <ImageView android:layout_width="52dp" android:layout_height="52dp" android:layout_marginEnd="12dp" android:contentDescription="PeerPath logo" android:scaleType="fitCenter" android:src="@drawable/peerpath_logo"/>
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
@@ -9,13 +9,13 @@
             </LinearLayout>
             <Button android:id="@+id/btnNotifications" android:layout_width="52dp" android:layout_height="52dp" android:background="@drawable/bg_circle_blue" android:minWidth="0dp" android:padding="0dp" android:text="🔔" android:textSize="18sp"/>
         </LinearLayout>
-        <!--  Hero card echoes learner XP card, but focuses on teaching  -->
+        <!--   Hero card echoes learner XP card, but focuses on teaching   -->
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="22dp" android:background="@drawable/bg_level_card" android:orientation="vertical" android:padding="20dp">
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Make every session count 🎓" android:textColor="@color/white" android:textSize="22sp" android:textStyle="bold"/>
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Manage learner requests, prepare resources and help your peers succeed." android:textColor="#CCE0FF" android:textSize="14sp"/>
         </LinearLayout>
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="22dp" android:text="Your teaching tools" android:textColor="@color/text_primary" android:textSize="19sp" android:textStyle="bold"/>
-        <!--  Cards use the same rounded subject-card style as the learner dashboard  -->
+        <!--   Cards use the same rounded subject-card style as the learner dashboard   -->
         <LinearLayout android:id="@+id/cardTutorRequests" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:background="@drawable/bg_subject_card" android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground" android:gravity="center_vertical" android:padding="10dp" android:orientation="horizontal">
             <TextView android:layout_width="48dp" android:layout_height="wrap_content" android:gravity="center" android:textSize="25sp" android:text="📨"/>
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
@@ -37,6 +37,15 @@
             <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/text_primary" android:textSize="16sp" android:textStyle="bold" android:text="Edit tutor profile"/>
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:textColor="@color/text_secondary" android:textSize="13sp" android:text="Update your modules, bio and experience."/>
+            </LinearLayout>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingEnd="8dp" android:text="›" android:textColor="@color/peer_blue" android:textSize="24sp"/>
+        </LinearLayout>
+        <!--  PRIVATE REVIEW FOLLOW-UPS  -->
+        <LinearLayout android:id="@+id/cardReviewFollowups" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:background="@drawable/bg_subject_card" android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground" android:gravity="center_vertical" android:orientation="horizontal" android:padding="10dp">
+            <TextView android:layout_width="48dp" android:layout_height="wrap_content" android:gravity="center" android:text="✉️" android:textSize="25sp"/>
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Review follow-ups" android:textColor="@color/text_primary" android:textSize="16sp" android:textStyle="bold"/>
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="Read and reply to private messages from PeerPath admins." android:textColor="@color/text_secondary" android:textSize="13sp"/>
             </LinearLayout>
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingEnd="8dp" android:text="›" android:textColor="@color/peer_blue" android:textSize="24sp"/>
         </LinearLayout>
@@ -88,6 +97,6 @@
             </LinearLayout>
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingEnd="8dp" android:text="›" android:textColor="@color/peer_blue" android:textSize="24sp"/>
         </LinearLayout>
-        <Button android:id="@+id/btnLogout" android:layout_width="match_parent" android:layout_height="55dp" android:layout_marginTop="24dp" android:layout_marginBottom="10dp" android:background="@drawable/bg_button_navy" android:text="Sign out" android:textAllCaps="false" android:textColor="@color/white" android:textSize="16sp" android:textStyle="bold"/>
+        <Button android:id="@+id/btnLogout" android:layout_width="match_parent" android:layout_height="55dp" android:layout_marginTop="24dp" android:layout_marginBottom="10dp" android:background="@drawable/bg_button_navy" android:text="Sign out" android:textAllCaps="false" android:textColor="@color/white" android:textSize="16sp" android:textStyle="bold" android:backgroundTint="#0D5BE1"/>
     </LinearLayout>
 </ScrollView>

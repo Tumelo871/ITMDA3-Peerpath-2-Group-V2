@@ -1,4 +1,3 @@
-
 package com.example.peerpath;
 
 import android.content.Intent;
@@ -176,36 +175,30 @@ public class MessagesActivity extends AppCompatActivity {
             int requestId,
             AtomicInteger remaining
     ) {
-        SupabaseApi.getProfile(otherUserId,
+        // Use the conversation-specific profile lookup. Do not silently label
+        // every failed profile request as "PeerPath User"; that hides the cause.
+        SupabaseApi.getConversationProfile(otherUserId,
                 new SupabaseApi.ObjectCallback() {
 
                     @Override
                     public void onSuccess(JSONObject profile) {
-                        String name = profile.optString(
-                                "full_name", "PeerPath User");
-
-                        if (name.trim().isEmpty()) {
-                            name = "PeerPath User";
+                        String name = profile.optString("full_name", "").trim();
+                        if (name.isEmpty()) {
+                            name = profile.optString("display_name", "").trim();
                         }
-
-                        final String participantName = name;
+                        if (name.isEmpty()) {
+                            name = profile.optString("name", "").trim();
+                        }
+                        final String participantName = name.isEmpty()
+                                ? "Name unavailable" : name;
 
                         loadLatestMessage(sessionId, (preview, time) ->
                                 runOnUiThread(() -> {
                                     if (isFinishing() || isDestroyed()
-                                            || requestId != requestNumber) {
-                                        return;
-                                    }
+                                            || requestId != requestNumber) return;
 
-                                    addConversation(
-                                            sessionId,
-                                            otherUserId,
-                                            subject,
-                                            participantName,
-                                            preview,
-                                            time
-                                    );
-
+                                    addConversation(sessionId, otherUserId, subject,
+                                            participantName, preview, time);
                                     finishOne(remaining, requestId);
                                 })
                         );
@@ -216,20 +209,16 @@ public class MessagesActivity extends AppCompatActivity {
                         loadLatestMessage(sessionId, (preview, time) ->
                                 runOnUiThread(() -> {
                                     if (isFinishing() || isDestroyed()
-                                            || requestId != requestNumber) {
-                                        return;
-                                    }
+                                            || requestId != requestNumber) return;
 
-                                    addConversation(
-                                            sessionId,
-                                            otherUserId,
-                                            subject,
-                                            "PeerPath User",
-                                            preview,
-                                            time
-                                    );
-
+                                    addConversation(sessionId, otherUserId, subject,
+                                            "Name unavailable", preview, time);
                                     finishOne(remaining, requestId);
+                                    Toast.makeText(MessagesActivity.this,
+                                            "Couldn't load a participant profile: "
+                                                    + (message == null || message.trim().isEmpty()
+                                                    ? "Unknown profile error" : message),
+                                            Toast.LENGTH_LONG).show();
                                 })
                         );
                     }

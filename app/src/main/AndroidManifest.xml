@@ -9,40 +9,27 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PeerPath">
 
+        <!-- Main and dashboard activities -->
         <activity
-            android:name=".BadgesActivity"
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".DashboardActivity"
             android:exported="false" />
 
         <activity
-            android:name="com.example.peerpath.ChatActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize" />
-
-        <activity
-            android:name="com.example.peerpath.ui.resources.ResourceRepositoryActivity"
+            android:name=".AdminDashboardActivity"
             android:exported="false" />
 
         <activity
             android:name=".AdminReviewActivity"
             android:exported="false" />
-
-        <activity
-            android:name=".BecomeTutorActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".MaterialsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".MessagesActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".RateTutorActivity"
-            android:exported="false" />
-
-
 
         <activity
             android:name=".LearnerDashboardActivity"
@@ -52,46 +39,9 @@
             android:name=".TutorDashboardActivity"
             android:exported="false" />
 
+        <!-- Authentication -->
         <activity
-            android:name=".AdminDashboardActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".TutorPendingActivity"
-            android:exported="false" />
-
-
-
-        <activity
-            android:name=".NotificationActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".MySessionsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".TutorSessionsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".TutorRequestsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".SessionRequestActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".TutorProfileActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".TutorSearchActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".DashboardActivity"
+            android:name=".LoginActivity"
             android:exported="false" />
 
         <activity
@@ -99,24 +49,101 @@
             android:exported="false" />
 
         <activity
+            android:name=".EditProfileActivity"
+            android:exported="false" />
+
+        <!-- Tutor applications and management -->
+        <activity
+            android:name=".BecomeTutorActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".TutorPendingActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".TutorRequestsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".TutorSessionsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".TutorSearchActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".TutorProfileActivity"
+            android:exported="false" />
+
+        <!-- Sessions -->
+        <activity
+            android:name=".SessionRequestActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".MySessionsActivity"
+            android:exported="false" />
+
+        <!-- Reviews and follow-up messaging -->
+        <activity
+            android:name=".RateTutorActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".WriteReviewActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".MyReviewsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ReviewFollowupInboxActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ReviewFollowupChatActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Messages -->
+        <activity
+            android:name=".MessagesActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ChatActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Learning resources and materials -->
+        <activity
+            android:name=".MaterialsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name="com.example.peerpath.ui.resources.ResourceRepositoryActivity"
+            android:exported="false" />
+
+        <!-- Notifications and gamification -->
+        <activity
+            android:name=".NotificationActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".LeaderboardActivity"
             android:exported="false" />
 
         <activity
-            android:name=".LoginActivity"
+            android:name=".BadgesActivity"
             android:exported="false" />
 
-
+        <!-- Tutor announcements -->
         <activity
-            android:name=".MainActivity"
-            android:exported="true">
-
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-
-        </activity>
+            android:name=".AnnounceActivity"
+            android:exported="false" />
 
     </application>
 

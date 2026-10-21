@@ -3,92 +3,134 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/peer_background"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:background="#FFFFFF">
 
+    <!-- NAVY HEADER -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="60dp"
-        android:background="@color/peer_blue"
-        android:gravity="center_vertical"
+        android:layout_height="64dp"
         android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingEnd="16dp">
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="16dp"
+        android:background="#082B6F">
 
-        <ImageButton
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnBack"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Back"
-            android:src="@drawable/ic_back" />
+            android:layout_width="84dp"
+            android:layout_height="40dp"
+            android:text="Back"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textAllCaps="false"
+            android:fontFamily="sans"
+            app:backgroundTint="#0D5BE1"
+            app:cornerRadius="24dp"
+            app:icon="@drawable/ic_back"
+            app:iconTint="#FFFFFF"
+            app:iconPadding="4dp"
+            app:iconGravity="textStart" />
 
         <TextView
             android:id="@+id/tvMaterialsTitle"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
-            android:text="Learning Materials"
-            android:textColor="@color/white"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:text="Resource Repository"
+            android:textColor="#FFFFFF"
+            android:textSize="19sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
 
     </LinearLayout>
 
+    <!-- MAIN CONTENT -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="22dp"
+        android:paddingBottom="16dp"
+        android:background="#FFFFFF">
 
+        <!-- INTRODUCTION -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="14dp"
+            android:text="Find study notes, videos, links and other tutoring materials shared by PeerPath tutors."
+            android:textColor="#17243A"
+            android:textSize="14sp"
+            android:lineSpacingExtra="3dp" />
+
+        <!-- SEARCH -->
         <EditText
             android:id="@+id/etSearch"
             android:layout_width="match_parent"
             android:layout_height="52dp"
-            android:background="@drawable/bg_input"
-            android:hint="Search title, subject or tutor"
+            android:hint="Search title, subject or description"
+            android:singleLine="true"
             android:inputType="text"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:textColor="@color/text_primary"
-            android:textColorHint="@color/text_secondary" />
+            android:imeOptions="actionSearch"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:textColor="#17243A"
+            android:textColorHint="#969696"
+            android:textSize="16sp"
+            android:backgroundTint="#0D5BE1"
+            android:importantForAutofill="no" />
 
+        <!-- STATUS -->
         <TextView
             android:id="@+id/tvMaterialStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:textColor="@color/text_secondary"
-            android:textSize="14sp" />
+            android:layout_marginBottom="8dp"
+            android:text="Loading tutoring resources..."
+            android:textColor="#45647C"
+            android:textSize="13sp" />
 
+        <!-- RESOURCE LIST -->
         <ScrollView
+            android:id="@+id/scrollMaterials"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="8dp"
-            android:layout_weight="1">
+            android:layout_weight="1"
+            android:fillViewport="true"
+            android:clipToPadding="false"
+            android:overScrollMode="ifContentScrolls">
 
             <LinearLayout
                 android:id="@+id/materialContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:orientation="vertical"
+                android:paddingBottom="12dp" />
 
         </ScrollView>
 
+        <!-- ADD MATERIAL -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnAddMaterial"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="54dp"
             android:layout_marginTop="10dp"
             android:text="＋  Add material"
-            android:textAllCaps="false"
-            android:textColor="@color/white"
+            android:textColor="#FFFFFF"
             android:textSize="16sp"
             android:textStyle="bold"
+            android:textAllCaps="false"
             android:visibility="gone"
-            app:backgroundTint="@color/peer_blue"
-            app:cornerRadius="14dp" />
+            app:backgroundTint="#0D5BE1"
+            app:cornerRadius="14dp"
+            app:rippleColor="#55082B6F" />
 
     </LinearLayout>
 

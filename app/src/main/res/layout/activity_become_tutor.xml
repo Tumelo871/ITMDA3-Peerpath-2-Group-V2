@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/peer_background">
+    android:fillViewport="true"
+    android:background="#F7FAFF">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -11,11 +13,11 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:background="@color/peer_blue"
+            android:layout_height="64dp"
+            android:background="#0D5BE1"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="8dp"
+            android:paddingStart="12dp"
             android:paddingEnd="16dp">
 
             <ImageButton
@@ -24,14 +26,16 @@
                 android:layout_height="44dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Back"
-                android:src="@drawable/ic_back" />
+                android:padding="10dp"
+                android:src="@drawable/ic_back"
+                app:tint="#FFFFFF" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="8dp"
                 android:text="Tutor Verification"
-                android:textColor="@color/white"
+                android:textColor="#FFFFFF"
                 android:textSize="20sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -46,7 +50,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Become a verified PeerPath tutor"
-                android:textColor="@color/peer_navy"
+                android:textColor="#082B6F"
                 android:textSize="25sp"
                 android:textStyle="bold" />
 
@@ -54,8 +58,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
+                android:lineSpacingExtra="2dp"
                 android:text="Enter the modules you want to tutor and upload proof that you passed them. An administrator will review your evidence before your tutor profile becomes searchable."
-                android:textColor="@color/text_secondary"
+                android:textColor="#60738B"
                 android:textSize="15sp" />
 
             <EditText
@@ -65,28 +70,34 @@
                 android:layout_marginTop="22dp"
                 android:background="@drawable/bg_input"
                 android:hint="Module codes, comma-separated (e.g. ITMDA3, PROG6)"
+                android:inputType="textCapCharacters|textMultiLine"
                 android:paddingStart="16dp"
                 android:paddingEnd="16dp"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_secondary" />
+                android:textColor="#17243A"
+                android:textColorHint="#60738B" />
 
             <Button
                 android:id="@+id/btnPickEvidence"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:layout_marginTop="14dp"
-                android:background="@drawable/bg_button_secondary"
+                android:backgroundTint="#0D5BE1"
+                android:elevation="2dp"
+                android:minHeight="56dp"
                 android:text="Attach proof (PDF or image)"
                 android:textAllCaps="false"
-                android:textColor="@color/peer_blue"
-                android:textSize="15sp" />
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tvSelectedFile"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:textColor="@color/text_secondary"
+                android:layout_marginTop="10dp"
+                android:paddingStart="2dp"
+                android:paddingEnd="2dp"
+                android:textColor="#45647C"
                 android:textSize="13sp" />
 
             <Button
@@ -94,10 +105,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:layout_marginTop="20dp"
-                android:background="@drawable/bg_button_primary"
+                android:backgroundTint="#0D5BE1"
+                android:elevation="2dp"
+                android:minHeight="56dp"
                 android:text="Submit for Verification"
                 android:textAllCaps="false"
-                android:textColor="@color/white"
+                android:textColor="#FFFFFF"
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
@@ -107,6 +120,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="8dp"
                 android:layout_marginTop="12dp"
+                android:indeterminateTint="#0D5BE1"
+                android:progressTint="#0D5BE1"
                 android:visibility="gone" />
 
             <TextView
@@ -114,7 +129,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:textColor="@color/danger"
+                android:textColor="#D32F2F"
                 android:textSize="14sp" />
         </LinearLayout>
     </LinearLayout>
