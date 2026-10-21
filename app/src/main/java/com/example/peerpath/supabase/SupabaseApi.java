@@ -892,6 +892,37 @@ public final class SupabaseApi {
         executeEmpty(request, callback);
     }
 
+
+    public static void getLearnerAnnouncements(JsonCallback callback) {
+        if (callback == null) return;
+
+        String problem = configurationError();
+        if (problem != null) {
+            callback.onError(problem);
+            return;
+        }
+
+        if (!isLoggedIn()) {
+            callback.onError("Please sign in again.");
+            return;
+        }
+
+        try {
+            Request request = authedRequest(
+                    SupabaseConfig.URL.trim()
+                            + "/rest/v1/rpc/peerpath_list_learner_announcements"
+            ).post(RequestBody.create("{}", JSON)).build();
+
+            executeArray(request, callback);
+
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+        }
+    }
+
+
+
+
     // -------------------- Resources --------------------
 
     public static void getResources(JsonCallback callback) {

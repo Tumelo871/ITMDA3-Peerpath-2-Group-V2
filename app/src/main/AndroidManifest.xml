@@ -23,6 +23,11 @@
             android:name=".SponsorActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".LearnerAnnouncementsActivity"
+            android:exported="false" />
+
+
 
         <activity
             android:name=".DashboardActivity"

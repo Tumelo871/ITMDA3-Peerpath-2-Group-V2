@@ -24,5 +24,6 @@ public class LearnerDashboardActivity extends RoleDashboardBaseActivity {
         wire("cardMaterials", MaterialsActivity.class);
         wire("btnNotifications", NotificationActivity.class);
         wire("cardBecomeTutor", BecomeTutorActivity.class);
+        wire("cardAnnouncements", LearnerAnnouncementsActivity.class);
     }
 }
