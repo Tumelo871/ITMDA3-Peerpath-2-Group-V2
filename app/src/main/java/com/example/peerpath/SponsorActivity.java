@@ -104,7 +104,20 @@ public class SponsorActivity extends Activity {
         SupabaseApi.getMyProfile(new SupabaseApi.ObjectCallback() {
             @Override public void onSuccess(JSONObject profile) {
                 runOnUiThread(() -> {
-                    isAdmin = "admin".equalsIgnoreCase(profile.optString("role", ""));
+                    String role = profile.optString("role", "").trim();
+                    String verification = profile.optString("verification_status", "").trim();
+                    isAdmin = "admin".equalsIgnoreCase(role);
+                    if (!isAdmin && !"sponsor".equalsIgnoreCase(role)) {
+                        showFatal("This screen is only available to approved sponsors and administrators.");
+                        return;
+                    }
+                    if (!isAdmin && !"verified".equalsIgnoreCase(verification)) {
+                        String message = "Your sponsor application is "
+                                + (verification.isEmpty() ? "not approved" : verification.replace('_', ' '))
+                                + ". The sponsor dashboard remains locked until an administrator approves your application.";
+                        showFatal(message);
+                        return;
+                    }
                     loadLearners();
                     loadRequests();
                 });

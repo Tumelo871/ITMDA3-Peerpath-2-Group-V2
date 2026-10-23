@@ -247,14 +247,32 @@ public class RegisterActivity extends AppCompatActivity {
 
             SupabaseApi.signUp(email, password, metadata, new SupabaseApi.ObjectCallback() {
                 @Override public void onSuccess(JSONObject data) {
-                    if (!tutor) {
+                    if (!tutor && !sponsor) {
                         runOnUiThread(() -> {
                             restoreButton();
                             Toast.makeText(RegisterActivity.this,
-                                    "Account created. Check your Vossie email if confirmation is required, then sign in.",
+                                    "Learner account created. Check your Vossie email if confirmation is required, then sign in.",
                                     Toast.LENGTH_LONG).show();
                             goToLogin(role);
                         });
+                        return;
+                    }
+
+                    if (sponsor) {
+                        String accessToken = data.optString("access_token", "");
+                        JSONObject user = data.optJSONObject("user");
+                        String userId = user == null ? "" : user.optString("id", "");
+                        if (accessToken.isEmpty() || userId.isEmpty()) {
+                            runOnUiThread(() -> {
+                                restoreButton();
+                                Toast.makeText(RegisterActivity.this,
+                                        "Your account may have been created, but Supabase did not issue a session. "
+                                                + "Your sponsor application was NOT submitted. Sign in after email confirmation and contact support to submit it.",
+                                        Toast.LENGTH_LONG).show();
+                            });
+                            return;
+                        }
+                        submitSponsorApplication(userId, accessToken, role);
                         return;
                     }
 
@@ -289,6 +307,48 @@ public class RegisterActivity extends AppCompatActivity {
             restoreButton();
             Toast.makeText(this, "Could not start registration.", Toast.LENGTH_LONG).show();
         }
+    }
+
+    private void submitSponsorApplication(String userId, String accessToken, String role) {
+        new Thread(() -> {
+            String error = null;
+            try {
+                // Use a SECURITY DEFINER RPC so sponsor submission does not require
+                // a broad direct INSERT policy on sponsor_applications.
+                JSONObject application = new JSONObject();
+                Request request = new Request.Builder()
+                        .url(SupabaseConfig.URL.trim() + "/rest/v1/rpc/peerpath_submit_sponsor_application")
+                        .addHeader("apikey", SupabaseConfig.PUBLISHABLE_KEY.trim())
+                        .addHeader("Authorization", "Bearer " + accessToken)
+                        .addHeader("Content-Type", "application/json")
+                        .post(RequestBody.create(application.toString(), MediaType.parse("application/json")))
+                        .build();
+                try (Response response = http.newCall(request).execute()) {
+                    if (!response.isSuccessful()) {
+                        String details = response.body() == null ? "" : response.body().string();
+                        throw new Exception("Sponsor application save failed (HTTP " + response.code() + "). "
+                                + (details.isEmpty() ? "" : details));
+                    }
+                }
+            } catch (Exception e) {
+                error = e.getMessage();
+            }
+            final String resultError = error;
+            runOnUiThread(() -> {
+                restoreButton();
+                if (resultError == null) {
+                    Toast.makeText(RegisterActivity.this,
+                            "Sponsor application submitted. You cannot access the sponsor dashboard until an administrator approves it.",
+                            Toast.LENGTH_LONG).show();
+                    goToLogin(role);
+                } else {
+                    Toast.makeText(RegisterActivity.this,
+                            "Your account may have been created, but the sponsor application was NOT submitted: "
+                                    + resultError + " Please do not register again.",
+                            Toast.LENGTH_LONG).show();
+                }
+            });
+        }).start();
     }
 
     private void uploadEvidenceAndCreateApplication(String userId, String accessToken, String modules, String email, String role) {

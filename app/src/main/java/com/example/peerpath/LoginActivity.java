@@ -135,6 +135,17 @@ public class LoginActivity extends AppCompatActivity {
                 openScreen(AdminDashboardActivity.class);
                 break;
             case "sponsor":
+                if (!"verified".equals(verification)) {
+                    String sponsorMessage = "Your sponsor application is "
+                            + (verification.isEmpty() || "not_applied".equals(verification)
+                            ? "not approved yet" : verification.replace('_', ' '))
+                            + ". You cannot access the sponsor dashboard until an administrator approves it.";
+                    if ("rejected".equals(verification)) {
+                        sponsorMessage = "Your sponsor application was rejected. Please contact PeerPath support if you need clarification.";
+                    }
+                    denyAndSignOut(sponsorMessage);
+                    return;
+                }
                 openScreen(SponsorActivity.class);
                 break;
             case "learner":

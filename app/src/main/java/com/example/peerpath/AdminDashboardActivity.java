@@ -40,11 +40,12 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
     public static final String SCREEN_APPLICATIONS = "applications";
     public static final String SCREEN_USERS = "users";
     public static final String SCREEN_REVIEWS = "reviews";
+    public static final String SCREEN_SPONSORS = "sponsors";
 
     private LinearLayout content;
     private TextView title, status;
     private ProgressBar progress;
-    private Button applicationsButton, usersButton, reviewsButton, materialsButton;
+    private Button applicationsButton, usersButton, reviewsButton, materialsButton, sponsorApplicationsButton;
     private boolean requestInProgress = false;
     private boolean logoutInProgress = false;
     private String currentScreen = SCREEN_APPLICATIONS;
@@ -73,6 +74,21 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
         styleButton(materialsButton);
         styleButton(logout);
 
+        // Add sponsor review navigation without requiring an XML layout rewrite.
+        if (applicationsButton != null && applicationsButton.getParent() instanceof android.view.ViewGroup) {
+            android.view.ViewGroup nav = (android.view.ViewGroup) applicationsButton.getParent();
+            sponsorApplicationsButton = new Button(this);
+            sponsorApplicationsButton.setText("Sponsor Applications");
+            sponsorApplicationsButton.setAllCaps(false);
+            styleButton(sponsorApplicationsButton);
+            int index = nav.indexOfChild(applicationsButton);
+            android.view.ViewGroup.LayoutParams oldParams = applicationsButton.getLayoutParams();
+            android.view.ViewGroup.LayoutParams newParams = oldParams == null
+                    ? new android.view.ViewGroup.LayoutParams(-1, -2) : oldParams;
+            nav.addView(sponsorApplicationsButton, Math.min(index + 1, nav.getChildCount()), newParams);
+            sponsorApplicationsButton.setOnClickListener(v -> loadSponsorApplications());
+        }
+
         if (applicationsButton != null) applicationsButton.setOnClickListener(v -> loadApplications());
         if (usersButton != null) usersButton.setOnClickListener(v -> loadUsers());
         if (reviewsButton != null) reviewsButton.setOnClickListener(v -> loadNegativeReviews());
@@ -95,6 +111,7 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
         if (content != null && !requestInProgress) {
             if (SCREEN_USERS.equals(currentScreen)) loadUsers();
             else if (SCREEN_REVIEWS.equals(currentScreen)) loadNegativeReviews();
+            else if (SCREEN_SPONSORS.equals(currentScreen)) loadSponsorApplications();
             else loadApplications();
         }
     }
@@ -138,6 +155,112 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
                 runOnUiThread(() -> { setLoading(false, "Could not load applications."); showError(message); });
             }
         });
+    }
+
+    private void loadSponsorApplications() {
+        currentScreen = SCREEN_SPONSORS;
+        setSection("Sponsor applications");
+        if (requestInProgress) return;
+        setLoading(true, "Loading sponsor applications…");
+        content.removeAllViews();
+        SupabaseApi.getSponsorApplications(new SupabaseApi.JsonCallback() {
+            @Override public void onSuccess(JSONArray data) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    setLoading(false, "");
+                    content.removeAllViews();
+                    int pending = 0;
+                    if (data != null) {
+                        for (int i = 0; i < data.length(); i++) {
+                            JSONObject app = data.optJSONObject(i);
+                            if (app != null && isPending(app.optString("status", ""))) {
+                                addSponsorApplicationCard(app);
+                                pending++;
+                            }
+                        }
+                    }
+                    status.setText("Pending sponsor applications: " + pending);
+                    if (pending == 0) addMessage("No pending sponsor applications were returned.");
+                });
+            }
+            @Override public void onError(String message) {
+                runOnUiThread(() -> {
+                    setLoading(false, "Could not load sponsor applications.");
+                    showError("Sponsor application review could not load. Confirm the admin list RPC exists: " + message);
+                });
+            }
+        });
+    }
+
+    private void addSponsorApplicationCard(JSONObject app) {
+        String id = first(app, "id", "application_id");
+        String name = first(app, "sponsor_name", "full_name", "name");
+        String email = first(app, "sponsor_email", "email");
+        String statusValue = first(app, "status");
+        String note = first(app, "application_note", "reason", "message");
+        LinearLayout item = card();
+        item.addView(text("Sponsor application", 18, 0xFF082B6F, true));
+        addLine(item, "Sponsor: " + (name.isEmpty() ? "Name not supplied" : name));
+        if (!email.isEmpty()) addLine(item, "Email: " + email);
+        if (!note.isEmpty()) addLine(item, "Application details: " + note);
+        addLine(item, "Status: " + (statusValue.isEmpty() ? "Unknown" : statusValue));
+        if (id.isEmpty()) {
+            addLine(item, "Cannot review: application ID is missing from the admin RPC response.");
+        } else {
+            LinearLayout actions = new LinearLayout(this);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            Button approve = button("Approve sponsor");
+            Button reject = button("Reject");
+            approve.setOnClickListener(v -> reviewSponsorApplication(id, true));
+            reject.setOnClickListener(v -> {
+                EditText input = new EditText(this);
+                input.setHint("Reason (optional)");
+                new AlertDialog.Builder(this).setTitle("Reject sponsor application")
+                        .setView(input).setNegativeButton("Cancel", null)
+                        .setPositiveButton("Reject", (d, w) ->
+                                reviewSponsorApplication(id, false, input.getText().toString().trim()))
+                        .show();
+            });
+            actions.addView(approve, weightParams());
+            actions.addView(reject, weightParams());
+            item.addView(actions);
+        }
+        content.addView(item);
+    }
+
+    private void reviewSponsorApplication(String applicationId, boolean approve) {
+        reviewSponsorApplication(applicationId, approve,
+                approve ? "Approved by administrator" : "Rejected by administrator");
+    }
+
+    private void reviewSponsorApplication(String applicationId, boolean approve, String note) {
+        new AlertDialog.Builder(this)
+                .setTitle(approve ? "Approve sponsor?" : "Reject sponsor?")
+                .setMessage(approve
+                        ? "This will approve the sponsor application and enable sponsor access."
+                        : "This will reject the sponsor application and keep sponsor access blocked.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton(approve ? "Approve" : "Reject", (d, w) -> {
+                    setLoading(true, "Submitting sponsor decision…");
+                    SupabaseApi.adminReviewSponsorApplication(applicationId, approve, note,
+                            new SupabaseApi.EmptyCallback() {
+                                @Override public void onSuccess() {
+                                    runOnUiThread(() -> {
+                                        setLoading(false, approve ? "Sponsor approved." : "Sponsor rejected.");
+                                        Toast.makeText(AdminDashboardActivity.this,
+                                                approve ? "Sponsor approved." : "Sponsor rejected.",
+                                                Toast.LENGTH_LONG).show();
+                                        loadSponsorApplications();
+                                    });
+                                }
+                                @Override public void onError(String message) {
+                                    runOnUiThread(() -> {
+                                        setLoading(false, "Sponsor review failed.");
+                                        showError(message);
+                                    });
+                                }
+                            });
+                }).show();
     }
 
     private void openTutorMaterials() {
@@ -638,6 +761,7 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
         if (status != null && message != null && !message.isEmpty()) status.setText(message);
         if (applicationsButton != null) applicationsButton.setEnabled(!loading);
         if (usersButton != null) usersButton.setEnabled(!loading);
+        if (sponsorApplicationsButton != null) sponsorApplicationsButton.setEnabled(!loading);
         if (reviewsButton != null) reviewsButton.setEnabled(!loading);
         if (materialsButton != null) materialsButton.setEnabled(!loading);
     }
