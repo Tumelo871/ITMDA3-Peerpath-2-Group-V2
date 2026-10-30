@@ -29,7 +29,6 @@ import java.util.Locale;
 /** Shared resource repository. Uses SupabaseApi and the existing activity_materials.xml. */
 public class MaterialsActivity extends AppCompatActivity {
     private static final int REQUEST_PICK_FILE = 7041;
-    private static final String STORAGE_BUCKET = "peerpath-files";
 
     private EditText etSearch;
     private TextView tvStatus;
@@ -92,7 +91,7 @@ public class MaterialsActivity extends AppCompatActivity {
                         String verification = profile.optString("verification_status", "");
                         canManageResources = "admin".equalsIgnoreCase(role) ||
                                 ("tutor".equalsIgnoreCase(role) &&
-                                        (verification.isEmpty() || "verified".equalsIgnoreCase(verification)));
+                                        "verified".equalsIgnoreCase(verification));
                     }
                     if (addButton != null) addButton.setVisibility(canManageResources ? View.VISIBLE : View.GONE);
                     loadMaterials();
@@ -212,8 +211,23 @@ public class MaterialsActivity extends AppCompatActivity {
                 String t = title.getText().toString().trim(), s = subject.getText().toString().trim();
                 String l = link.getText().toString().trim(), de = desc.getText().toString().trim();
                 if (t.isEmpty()) { title.setError("Enter a title"); return; }
-                if (l.isEmpty() && de.isEmpty()) { desc.setError("Add a description, a link, or choose a file"); return; }
-                if (!l.isEmpty() && !l.startsWith("https://") && !l.startsWith("http://")) l = "https://" + l;
+                // Continue publishes an external-link resource. File resources
+                // must go through Choose file so the upload completes first.
+                if (s.isEmpty()) {
+                    subject.setError("Enter the subject or module.");
+                    return;
+                }
+                if (l.isEmpty()) {
+                    link.setError("Add a learning link, or use Choose file to upload a document, video or audio file.");
+                    return;
+                }
+                if (!l.startsWith("https://") && !l.startsWith("http://")) {
+                    l = "https://" + l;
+                }
+                if (!android.util.Patterns.WEB_URL.matcher(l).matches()) {
+                    link.setError("Enter a valid web link.");
+                    return;
+                }
                 dialog.dismiss(); saveResource(t, s, l, de, null);
             });
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
@@ -249,9 +263,23 @@ public class MaterialsActivity extends AppCompatActivity {
         Toast.makeText(this, "Uploading resource…", Toast.LENGTH_SHORT).show();
         SupabaseApi.uploadFile(getContentResolver(), uri, storagePath, new SupabaseApi.EmptyCallback() {
             @Override public void onSuccess() {
-                String publicUrl = getSupabasePublicUrl(storagePath);
-                String combinedDescription = pendingDescription;
-                saveResource(pendingTitle, pendingSubject, publicUrl, combinedDescription, null);
+                // A private bucket must store the object path, never a public URL.
+                String combinedDescription = pendingDescription == null ? "" : pendingDescription.trim();
+
+                if (pendingExternalLink != null && !pendingExternalLink.trim().isEmpty()) {
+                    String extra = "Additional link: " + pendingExternalLink.trim();
+                    combinedDescription = combinedDescription.isEmpty()
+                            ? extra
+                            : combinedDescription + "\n" + extra;
+                }
+
+                saveResource(
+                        pendingTitle,
+                        pendingSubject,
+                        storagePath,
+                        combinedDescription,
+                        null
+                );
             }
             @Override public void onError(String message) {
                 runOnUiThread(() -> {
@@ -260,28 +288,6 @@ public class MaterialsActivity extends AppCompatActivity {
                 });
             }
         });
-    }
-
-    private String getSupabasePublicUrl(String path) {
-        String base = SupabaseConfig.URL == null ? "" : SupabaseConfig.URL.trim();
-        while (base.endsWith("/")) {
-            base = base.substring(0, base.length() - 1);
-        }
-
-        // Encode each path segment separately so the slash between folders is preserved.
-        String[] parts = path.replace("\\", "/").split("/");
-        StringBuilder encoded = new StringBuilder();
-        for (String part : parts) {
-            if (encoded.length() > 0) encoded.append("/");
-            try {
-                encoded.append(java.net.URLEncoder.encode(part, "UTF-8")
-                        .replace("+", "%20"));
-            } catch (java.io.UnsupportedEncodingException ignored) {
-                encoded.append(part);
-            }
-        }
-
-        return base + "/storage/v1/object/public/" + STORAGE_BUCKET + "/" + encoded;
     }
 
     private String safeExtension(Uri uri) {
@@ -297,6 +303,10 @@ public class MaterialsActivity extends AppCompatActivity {
         if ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 .equals(mime)) return ".xlsx";
         if (mime != null && mime.startsWith("video/")) return ".mp4";
+        if ("audio/mpeg".equals(mime) || "audio/mp3".equals(mime)) return ".mp3";
+        if ("audio/mp4".equals(mime) || "audio/x-m4a".equals(mime)) return ".m4a";
+        if ("audio/wav".equals(mime) || "audio/x-wav".equals(mime)) return ".wav";
+        if ("audio/ogg".equals(mime)) return ".ogg";
 
         return ".bin";
     }
@@ -312,7 +322,8 @@ public class MaterialsActivity extends AppCompatActivity {
     private void saveResource(String title, String subject, String url, String description, AlertDialog ignored) {
         if (tvStatus != null) tvStatus.setText("Saving resource…");
         SupabaseApi.createResource(title, subject, url, description, new SupabaseApi.EmptyCallback() {
-            @Override public void onSuccess() {
+            @Override
+            public void onSuccess() {
                 runOnUiThread(() -> {
                     Toast.makeText(MaterialsActivity.this, "Resource published.", Toast.LENGTH_SHORT).show();
                     pendingTitle = pendingSubject = pendingDescription = pendingExternalLink = "";
@@ -342,31 +353,138 @@ public class MaterialsActivity extends AppCompatActivity {
         });
     }
 
+    /**
+     * Opens external links directly. Files in peerpath-files are private,
+     * so Supabase must issue a temporary signed URL first.
+     */
+    /**
+     * Opens external links directly. Supabase Storage links are always
+     * converted to signed URLs first because peerpath-files is private.
+     */
     private void openLink(String link) {
-        String value = link == null ? "" : link.trim();
-        if (value.isEmpty()
-                || "null".equalsIgnoreCase(value)
+        final String value = link == null ? "" : link.trim();
+
+        if (value.isEmpty() || "null".equalsIgnoreCase(value)
                 || "undefined".equalsIgnoreCase(value)) {
-            Toast.makeText(this,
-                    "This resource has no attached file or link. Ask the tutor to upload it again.",
+            Toast.makeText(this, "This resource has no attached file or link.",
                     Toast.LENGTH_LONG).show();
             return;
         }
 
-        // Older resource rows may store only the object path rather than a full URL.
-        if (!value.startsWith("https://") && !value.startsWith("http://")) {
-            value = getSupabasePublicUrl(value.startsWith("/") ? value.substring(1) : value);
+        Uri parsed;
+        try {
+            parsed = Uri.parse(value);
+        } catch (Exception e) {
+            Toast.makeText(this, "The resource link is invalid.",
+                    Toast.LENGTH_LONG).show();
+            return;
         }
 
+        String scheme = parsed.getScheme();
+        String host = parsed.getHost();
+        String path = parsed.getPath() == null ? "" : parsed.getPath();
+
+        boolean isSupabaseStorageUrl =
+                path.contains("/storage/v1/object/public/peerpath-files/")
+                        || path.contains("/storage/v1/object/sign/peerpath-files/")
+                        || path.contains("/storage/v1/object/peerpath-files/");
+        boolean isBucketPath = value.startsWith("peerpath-files/");
+        boolean isRelativeObjectPath = scheme == null;
+        boolean alreadySigned = path.contains("/object/sign/peerpath-files/")
+                && parsed.getQueryParameter("token") != null;
+
+        // Some earlier tutor-upload builds incorrectly saved a storage path
+        // as https://<user-uuid>/<filename>.bin. That is NOT an external URL.
+        // Recover it as <user-uuid>/<filename> and sign it in the private bucket.
+        boolean malformedUuidHost =
+                "https".equalsIgnoreCase(scheme)
+                        && host != null
+                        && host.matches("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+                        && !path.isEmpty();
+
+        final String valueToSign;
+        if (malformedUuidHost) {
+            valueToSign = host + path;
+        } else {
+            valueToSign = value;
+        }
+
+        if (alreadySigned) {
+            launchResourceUrl(value);
+            return;
+        }
+
+        // Real external websites (e.g. YouTube or course websites) open directly.
+        // Supabase URLs, relative object paths and the malformed UUID-host format
+        // must go through private-bucket signing.
+        if (!isSupabaseStorageUrl && !isBucketPath
+                && !isRelativeObjectPath && !malformedUuidHost) {
+            launchResourceUrl(value);
+            return;
+        }
+
+        if (tvStatus != null) tvStatus.setText("Preparing secure resource link…");
+        Toast.makeText(this, "Securing resource link…", Toast.LENGTH_SHORT).show();
+
+        SupabaseApi.createResourceSignedUrl(valueToSign, new SupabaseApi.StringCallback() {
+            @Override public void onSuccess(String signedUrl) {
+                runOnUiThread(() -> {
+                    if (tvStatus != null) tvStatus.setText("Resource ready.");
+                    if (signedUrl == null || signedUrl.trim().isEmpty()) {
+                        Toast.makeText(MaterialsActivity.this,
+                                "Supabase returned an empty resource link.",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+
+                    Uri signedUri = Uri.parse(signedUrl.trim());
+                    String signedPath = signedUri.getPath() == null
+                            ? "" : signedUri.getPath();
+                    String signedToken = signedUri.getQueryParameter("token");
+
+                    boolean validPrivateSignedUrl =
+                            "https".equalsIgnoreCase(signedUri.getScheme())
+                                    && signedUri.getHost() != null
+                                    && signedPath.contains("/storage/v1/object/sign/peerpath-files/")
+                                    && signedToken != null && !signedToken.trim().isEmpty();
+
+                    if (!validPrivateSignedUrl) {
+                        Toast.makeText(MaterialsActivity.this,
+                                "The signing API did not return a valid private link. "
+                                        + "The browser was not opened. Returned path: "
+                                        + signedPath,
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+
+                    launchResourceUrl(signedUrl);
+                });
+            }
+
+            @Override public void onError(String message) {
+                runOnUiThread(() -> {
+                    if (tvStatus != null) tvStatus.setText("Could not open resource.");
+                    Toast.makeText(MaterialsActivity.this,
+                            "Could not create secure resource link: " + message,
+                            Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    private void launchResourceUrl(String url) {
         try {
-            Uri uri = Uri.parse(value);
+            Uri uri = Uri.parse(url);
             String scheme = uri.getScheme();
+
             if (scheme == null
                     || (!"https".equalsIgnoreCase(scheme)
                     && !"http".equalsIgnoreCase(scheme))) {
-                Toast.makeText(this, "This resource link is invalid.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "This resource link is invalid.",
+                        Toast.LENGTH_LONG).show();
                 return;
             }
+
             Intent intent = new Intent(Intent.ACTION_VIEW, uri);
             if (intent.resolveActivity(getPackageManager()) != null) {
                 startActivity(intent);
@@ -375,8 +493,7 @@ public class MaterialsActivity extends AppCompatActivity {
                         Toast.LENGTH_LONG).show();
             }
         } catch (Exception e) {
-            Toast.makeText(this,
-                    "Could not open the resource. Check its file URL.",
+            Toast.makeText(this, "Could not open the learning resource.",
                     Toast.LENGTH_LONG).show();
         }
     }
@@ -392,5 +509,3 @@ public class MaterialsActivity extends AppCompatActivity {
         return value;
     }
 }
-
-

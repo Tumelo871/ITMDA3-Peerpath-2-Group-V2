@@ -285,27 +285,92 @@ public final class SupabaseApi {
 
     // -------------------- Sessions --------------------
 
-    public static void createSession(String tutorId, String subject, String date,
-                                     String time, String message, EmptyCallback callback) {
-        if (blank(userId())) { callback.onError("Please sign in before requesting a session."); return; }
+
+    public static void createSession(
+            String tutorId,
+            String subject,
+            String date,
+            String time,
+            String message,
+            EmptyCallback callback) {
+
+        if (callback == null) return;
+
+        if (blank(userId())) {
+            callback.onError("Please sign in before requesting a session.");
+            return;
+        }
+
         if (blank(tutorId) || blank(subject) || blank(date) || blank(time)) {
-            callback.onError("Tutor, subject, date and time are required."); return;
+            callback.onError("Tutor, subject, date and time are required.");
+            return;
         }
+
         if (tutorId.equals(userId())) {
-            callback.onError("You cannot book a session with your own profile."); return;
+            callback.onError("You cannot book a session with your own profile.");
+            return;
         }
+
+        // Validate and normalise the date.
+        String cleanDate = date.trim();
+
+        try {
+            java.time.LocalDate.parse(
+                    cleanDate,
+                    java.time.format.DateTimeFormatter.ISO_LOCAL_DATE
+            );
+        } catch (java.time.format.DateTimeParseException e) {
+            callback.onError("Invalid session date. Please select a valid date.");
+            return;
+        }
+
+        // Accept HH:mm or HH:mm:ss and send HH:mm:ss.
+        String cleanTime = time.trim();
+
+        try {
+            java.time.LocalTime parsedTime;
+
+            try {
+                parsedTime = java.time.LocalTime.parse(
+                        cleanTime,
+                        java.time.format.DateTimeFormatter.ofPattern("H:mm")
+                );
+            } catch (java.time.format.DateTimeParseException e) {
+                parsedTime = java.time.LocalTime.parse(
+                        cleanTime,
+                        java.time.format.DateTimeFormatter.ISO_LOCAL_TIME
+                );
+            }
+
+            cleanTime = parsedTime.format(
+                    java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")
+            );
+
+        } catch (java.time.format.DateTimeParseException e) {
+            callback.onError("Invalid session time. Please select a valid time.");
+            return;
+        }
+
         JSONObject row = new JSONObject();
+
         try {
             row.put("learner_id", userId());
-            row.put("tutor_id", tutorId);
+            row.put("tutor_id", tutorId.trim());
             row.put("subject", subject.trim());
-            row.put("session_date", date.trim());
-            row.put("session_time", time.trim());
-            row.put("learner_message", message == null ? "" : message.trim());
+            row.put("session_date", cleanDate);
+            row.put("session_time", cleanTime);
+            row.put("learner_message",
+                    message == null ? "" : message.trim());
             row.put("status", "pending");
-        } catch (JSONException e) { callback.onError(e.getMessage()); return; }
+
+        } catch (org.json.JSONException e) {
+            callback.onError("Could not prepare the session request.");
+            return;
+        }
+
         dbPost("sessions", row, callback);
     }
+
 
     /**
      * Requests a session with a verified tutor. This rechecks the tutor profile
@@ -336,13 +401,50 @@ public final class SupabaseApi {
         });
     }
 
-    /** Loads reviews for a tutor. Requires reviews.tutor_id and the fields shown below. */
+    /**
+     * Loads reviews for a tutor.
+     *
+     * Different PeerPath database versions have used student_id or learner_id
+     * for the review author. Try the supported schema variants without changing
+     * database data. Anonymous reviews never expose the reviewer's identity.
+     */
     public static void getTutorReviews(String tutorId, JsonCallback callback) {
         if (callback == null) return;
-        if (blank(tutorId)) { callback.onError("Tutor ID is missing."); return; }
-        dbGet("reviews", "tutor_id=eq." + encode(tutorId)
-                + "&select=rating,comment,is_anonymous,created_at,student_id"
-                + "&order=created_at.desc", new JsonCallback() {
+        if (blank(tutorId)) {
+            callback.onError("Tutor ID is missing.");
+            return;
+        }
+        if (!isLoggedIn()) {
+            callback.onError("Please sign in to view tutor reviews.");
+            return;
+        }
+
+        getTutorReviewsWithSchema(tutorId.trim(), callback, 0, null);
+    }
+
+    private static void getTutorReviewsWithSchema(
+            String tutorId, JsonCallback callback, int attempt, String previousError) {
+
+        final String[] queries = new String[] {
+                "tutor_id=eq." + encode(tutorId)
+                        + "&select=rating,comment,is_anonymous,created_at,student_id"
+                        + "&order=created_at.desc",
+                "tutor_id=eq." + encode(tutorId)
+                        + "&select=rating,comment,is_anonymous,created_at,learner_id"
+                        + "&order=created_at.desc",
+                "tutor_id=eq." + encode(tutorId)
+                        + "&select=rating,comment,created_at"
+                        + "&order=created_at.desc"
+        };
+
+        if (attempt >= queries.length) {
+            callback.onError(previousError == null
+                    ? "Could not load tutor reviews. Check the reviews table columns and SELECT policy."
+                    : previousError);
+            return;
+        }
+
+        dbGet("reviews", queries[attempt], new JsonCallback() {
             @Override public void onSuccess(JSONArray rows) {
                 JSONArray safeRows = new JSONArray();
                 if (rows != null) {
@@ -355,32 +457,82 @@ public final class SupabaseApi {
                             item.put("comment", source.optString("comment", ""));
                             item.put("created_at", source.optString("created_at", ""));
                             boolean anonymous = source.optBoolean("is_anonymous", false);
-                            item.put("reviewer_name", anonymous ? "Anonymous learner" : "Learner");
+                            item.put("reviewer_name",
+                                    anonymous ? "Anonymous learner" : "Learner");
                             safeRows.put(item);
-                        } catch (JSONException ignored) { }
+                        } catch (JSONException ignored) {
+                            // Skip only the malformed row; retain other reviews.
+                        }
                     }
                 }
                 callback.onSuccess(safeRows);
             }
-            @Override public void onError(String message) { callback.onError(message); }
+
+            @Override public void onError(String message) {
+                // Retry only schema/column compatibility variants. Do not hide a
+                // permission/network error by blindly issuing more requests.
+                String lower = message == null ? "" : message.toLowerCase(java.util.Locale.ROOT);
+                boolean schemaMismatch = lower.contains("column")
+                        || lower.contains("does not exist")
+                        || lower.contains("42703")
+                        || lower.contains("is_anonymous");
+                if (schemaMismatch && attempt + 1 < queries.length) {
+                    getTutorReviewsWithSchema(tutorId, callback, attempt + 1, message);
+                } else {
+                    callback.onError(message == null || message.trim().isEmpty()
+                            ? "Could not load tutor reviews." : message);
+                }
+            }
         });
     }
 
     /** Resolves the learner attached to a tutoring session. */
-    public static void getTutorRequesterName(String sessionId, JsonCallback callback) {
+    /** Loads the learner's name for a session assigned to the signed-in tutor. */
+    public static void getTutorRequesterName(
+            String sessionId, JsonCallback callback) {
+
         if (callback == null) return;
-        if (blank(sessionId)) { callback.onError("Session ID is missing."); return; }
-        dbGet("sessions", "id=eq." + encode(sessionId) + "&select=learner_id", new JsonCallback() {
-            @Override public void onSuccess(JSONArray sessions) {
-                JSONObject session = sessions == null ? null : sessions.optJSONObject(0);
-                String learnerId = session == null ? "" : session.optString("learner_id", "");
-                if (blank(learnerId) || "null".equalsIgnoreCase(learnerId)) {
-                    callback.onError("The learner for this session could not be found.");
-                    return;
-                }
-                dbGet("profiles", "id=eq." + encode(learnerId) + "&select=full_name", callback);
+
+        if (blank(sessionId)) {
+            callback.onError("Session ID is missing.");
+            return;
+        }
+
+        if (!isLoggedIn() || !isConfigured()) {
+            callback.onError("Please sign in again.");
+            return;
+        }
+
+        JSONObject body = new JSONObject();
+
+        try {
+            body.put("p_session_id", sessionId.trim());
+        } catch (JSONException e) {
+            callback.onError("Could not prepare learner lookup.");
+            return;
+        }
+
+        Request request = authedRequest(
+                SupabaseConfig.URL.trim()
+                        + "/rest/v1/rpc/peerpath_tutor_requester_name")
+                .post(RequestBody.create(body.toString(), JSON))
+                .build();
+
+        executeArray(request, new JsonCallback() {
+            @Override
+            public void onSuccess(JSONArray data) {
+                callback.onSuccess(data);
             }
-            @Override public void onError(String message) { callback.onError(message); }
+
+            @Override
+            public void onError(String message) {
+                android.util.Log.e(
+                        "TutorRequests",
+                        "Could not load learner name for session "
+                                + sessionId + ": " + message
+                );
+                callback.onError(message);
+            }
         });
     }
 
@@ -837,108 +989,360 @@ public final class SupabaseApi {
         executeEmpty(request, callback);
     }
 
-    /** Creates a short-lived signed URL for an evidence object in the private bucket. */
-    public static void createTutorEvidenceSignedUrl(String evidencePath, StringCallback callback) {
-        if (callback == null) return;
-        if (!isLoggedIn()) { callback.onError("Please sign in first."); return; }
-        if (blank(evidencePath)) { callback.onError("No evidence file was attached to this application."); return; }
-        if (!isConfigured()) { callback.onError("Supabase is not configured."); return; }
+    /**
+     * Creates a temporary signed URL for a file in the private
+     * peerpath-files bucket.
+     *
+     * Accepts:
+     *  - a raw object path, e.g. user-uuid/resource_123.pdf
+     *  - a bucket-prefixed path, e.g. peerpath-files/user-uuid/file.pdf
+     *  - an older public Storage URL
+     *  - an older signed Storage URL
+     */
+    public static void createResourceSignedUrl(
+            String resourcePath,
+            StringCallback callback) {
 
-        String path = evidencePath.trim();
-        // If evidence_path contains a Supabase Storage URL, extract the object path.
-        String marker = "/object/";
-        int markerAt = path.indexOf(marker);
-        if (path.startsWith("http") && markerAt >= 0) {
-            String after = path.substring(markerAt + marker.length());
-            int slash = after.indexOf('/');
-            if (slash >= 0) {
-                String bucket = after.substring(0, slash);
-                if (!"tutor-evidence".equals(bucket)) {
-                    callback.onError("Evidence is not in the tutor-evidence bucket: " + bucket);
+        if (callback == null) return;
+
+        String problem = configurationError();
+        if (problem != null) {
+            callback.onError(problem);
+            return;
+        }
+
+        if (!isLoggedIn()) {
+            callback.onError("Please sign in first.");
+            return;
+        }
+
+        if (blank(resourcePath)) {
+            callback.onError("The resource file path is missing.");
+            return;
+        }
+
+        String objectPath = resourcePath.trim();
+
+        // If an older database row contains a full Supabase URL,
+        // extract only the object path from this project's Storage URL.
+        if (objectPath.startsWith("https://") || objectPath.startsWith("http://")) {
+            try {
+                Uri suppliedUri = Uri.parse(objectPath);
+                Uri projectUri = Uri.parse(SupabaseConfig.URL.trim());
+
+                String suppliedHost = suppliedUri.getHost();
+                String projectHost = projectUri.getHost();
+
+                if (blank(suppliedHost) || blank(projectHost)
+                        || !suppliedHost.equalsIgnoreCase(projectHost)) {
+                    callback.onError(
+                            "This resource URL does not belong to the configured Supabase project."
+                    );
                     return;
                 }
-                path = after.substring(slash + 1);
-                int query = path.indexOf('?');
-                if (query >= 0) path = path.substring(0, query);
+
+                String decodedUrlPath = suppliedUri.getPath();
+                if (blank(decodedUrlPath)) {
+                    callback.onError("The saved resource URL is invalid.");
+                    return;
+                }
+
+                String[] markers = new String[] {
+                        "/storage/v1/object/public/peerpath-files/",
+                        "/storage/v1/object/sign/peerpath-files/",
+                        "/storage/v1/object/peerpath-files/"
+                };
+
+                String extracted = null;
+                for (String marker : markers) {
+                    int markerIndex = decodedUrlPath.indexOf(marker);
+                    if (markerIndex >= 0) {
+                        extracted = decodedUrlPath.substring(
+                                markerIndex + marker.length()
+                        );
+                        break;
+                    }
+                }
+
+                if (blank(extracted)) {
+                    callback.onError(
+                            "The saved URL is not a file in the peerpath-files bucket."
+                    );
+                    return;
+                }
+
+                objectPath = extracted;
+
+            } catch (Exception e) {
+                callback.onError("Could not read the saved resource URL.");
+                return;
             }
-        } else if (path.startsWith("tutor-evidence/")) {
-            path = path.substring("tutor-evidence/".length());
         }
-        if (blank(path)) { callback.onError("The evidence storage path is invalid."); return; }
+
+        // Accept older rows that stored the bucket name with the object path.
+        if (objectPath.startsWith("peerpath-files/")) {
+            objectPath = objectPath.substring("peerpath-files/".length());
+        }
+        objectPath = normalizeStoragePath(objectPath);
+        if (objectPath == null) {
+            callback.onError("The resource storage path is invalid. Use a relative path such as user-id/resource.pdf.");
+            return;
+        }
 
         JSONObject body = new JSONObject();
-        try { body.put("expiresIn", 300); }
-        catch (JSONException e) { callback.onError(e.getMessage()); return; }
-        String url = SupabaseConfig.URL.trim() + "/storage/v1/object/sign/tutor-evidence/" + encodePath(path);
-        Request request = authedRequest(url)
-                .post(RequestBody.create(body.toString(), JSON)).build();
+        try {
+            body.put("expiresIn", 600);
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the secure resource link.");
+            return;
+        }
+
+        final String baseUrl = SupabaseConfig.URL.trim().replaceAll("/+$", "");
+
+        String signedUrlEndpoint = baseUrl
+                + "/storage/v1/object/sign/peerpath-files/"
+                + encodePath(objectPath);
+
+        Request request;
+        try {
+            request = authedRequest(signedUrlEndpoint)
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+
         executeObject(request, new ObjectCallback() {
-            @Override public void onSuccess(JSONObject data) {
-                String signed = data.optString("signedURL", data.optString("signedUrl", ""));
-                if (blank(signed)) { callback.onError("Supabase did not return a signed evidence URL."); return; }
-                if (signed.startsWith("http://") || signed.startsWith("https://")) {
-                    callback.onSuccess(signed);
+            @Override
+            public void onSuccess(JSONObject response) {
+                String signedUrl = response.optString(
+                        "signedURL",
+                        response.optString("signedUrl", "")
+                );
+
+                if (blank(signedUrl)) {
+                    callback.onError(
+                            "Supabase did not return a signed resource URL."
+                    );
+                    return;
+                }
+
+                if (signedUrl.startsWith("https://")
+                        || signedUrl.startsWith("http://")) {
+                    callback.onSuccess(signedUrl);
+                    return;
+                }
+
+                // Supabase Storage may return either:
+                //   /object/sign/<bucket>/<path>?token=...
+                // or /storage/v1/object/sign/<bucket>/<path>?token=...
+                // The first form is relative to the Storage service, not the
+                // project root, so it MUST be prefixed with /storage/v1.
+                String normalizedPath = signedUrl.trim();
+                if (!normalizedPath.startsWith("/")) {
+                    normalizedPath = "/" + normalizedPath;
+                }
+
+                if (normalizedPath.startsWith("/storage/v1/")) {
+                    callback.onSuccess(baseUrl + normalizedPath);
+                } else if (normalizedPath.startsWith("/object/")) {
+                    callback.onSuccess(baseUrl + "/storage/v1" + normalizedPath);
                 } else {
-                    String normalized = signed.startsWith("/") ? signed : "/" + signed;
-                    callback.onSuccess(SupabaseConfig.URL.trim() + normalized);
+                    callback.onError(
+                            "Supabase returned an unexpected signed URL path: " + normalizedPath
+                    );
                 }
             }
-            @Override public void onError(String message) { callback.onError(message); }
+
+            @Override
+            public void onError(String message) {
+                callback.onError(message);
+            }
         });
     }
 
     // -------------------- Resources --------------------
 
+    /** Loads resources visible to the signed-in user. Supabase RLS controls access. */
     public static void getResources(JsonCallback callback) {
+        if (callback == null) return;
+
+        String problem = configurationError();
+        if (problem != null) {
+            callback.onError(problem);
+            return;
+        }
+
+        if (!isLoggedIn()) {
+            callback.onError("Please sign in to view learning resources.");
+            return;
+        }
+
         dbGet("resources", "select=*&order=created_at.desc", callback);
     }
 
-    public static void createResource(String title, String subject, String link,
-                                      String description, EmptyCallback callback) {
-        String id = userId();
-        if (blank(id)) { callback.onError("You are not logged in."); return; }
-        if (blank(title)) { callback.onError("Resource title is required."); return; }
+    /**
+     * Saves a resource row. The link may be an external HTTP(S) URL or
+     * a relative object path in the private peerpath-files bucket.
+     *
+     * Database RLS must independently restrict inserts to authorised tutors/admins.
+     */
+    public static void createResource(
+            String title,
+            String subject,
+            String link,
+            String description,
+            EmptyCallback callback) {
+
+        if (callback == null) return;
+
+        String problem = configurationError();
+        if (problem != null) {
+            callback.onError(problem);
+            return;
+        }
+
+        String ownerId = userId();
+        if (blank(ownerId) || blank(token())) {
+            callback.onError("You are not logged in. Please sign in again.");
+            return;
+        }
+
+        if (blank(title)) {
+            callback.onError("Resource title is required.");
+            return;
+        }
+
+        String cleanLink = link == null ? "" : link.trim();
+        String cleanDescription = description == null ? "" : description.trim();
+
+        if (cleanLink.isEmpty() && cleanDescription.isEmpty()) {
+            callback.onError("Add a resource link, file path or description.");
+            return;
+        }
+
+        // If it looks like a web address, require a valid HTTP(S) URL.
+        if (cleanLink.startsWith("http://") || cleanLink.startsWith("https://")) {
+            Uri parsed = Uri.parse(cleanLink);
+            String scheme = parsed.getScheme();
+            if (parsed.getHost() == null
+                    || !("http".equalsIgnoreCase(scheme)
+                    || "https".equalsIgnoreCase(scheme))) {
+                callback.onError("Enter a valid resource URL.");
+                return;
+            }
+        }
+
         JSONObject row = new JSONObject();
         try {
-            row.put("owner_id", id);
+            row.put("owner_id", ownerId);
             row.put("title", title.trim());
             row.put("subject", subject == null ? "" : subject.trim());
-            row.put("url", link == null ? "" : link.trim());
-            row.put("description", description == null ? "" : description.trim());
-        } catch (JSONException e) { callback.onError(e.getMessage()); return; }
+            row.put("url", cleanLink);
+            row.put("description", cleanDescription);
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the resource record.");
+            return;
+        }
+
         dbPost("resources", row, callback);
     }
 
+    /** Deletes a resource database row. Database RLS must verify ownership/admin role. */
     public static void deleteResource(String resourceId, EmptyCallback callback) {
-        if (blank(resourceId)) { callback.onError("Resource ID is missing."); return; }
-        dbDelete("resources", "id=eq." + encode(resourceId), callback);
+        if (callback == null) return;
+
+        if (blank(resourceId)) {
+            callback.onError("Resource ID is missing.");
+            return;
+        }
+
+        if (!isLoggedIn()) {
+            callback.onError("Please sign in again.");
+            return;
+        }
+
+        dbDelete("resources", "id=eq." + encode(resourceId.trim()), callback);
     }
 
     // -------------------- Storage --------------------
 
-    public static void uploadFile(ContentResolver resolver, Uri uri, String path,
-                                  EmptyCallback callback) {
-        if (!isLoggedIn()) { callback.onError("You are not logged in."); return; }
-        if (!isConfigured()) { callback.onError("Supabase is not configured."); return; }
+    /**
+     * Uploads a file to the private peerpath-files bucket.
+     * File reading happens off the main UI thread.
+     *
+     * The supplied path should be relative to the bucket, for example:
+     * user-uuid/resource_123.pdf
+     */
+    public static void uploadFile(
+            ContentResolver resolver,
+            Uri uri,
+            String path,
+            EmptyCallback callback) {
+
+        if (callback == null) return;
+
+        String problem = configurationError();
+        if (problem != null) {
+            callback.onError(problem);
+            return;
+        }
+
+        if (!isLoggedIn()) {
+            callback.onError("You are not logged in. Please sign in again.");
+            return;
+        }
+
         if (resolver == null || uri == null || blank(path)) {
-            callback.onError("Choose a file and provide a storage path."); return;
+            callback.onError("Choose a file and provide a storage path.");
+            return;
         }
-        try (InputStream input = resolver.openInputStream(uri)) {
-            if (input == null) { callback.onError("Could not open selected file."); return; }
-            byte[] bytes = readAll(input);
-            String mime = resolver.getType(uri);
-            if (blank(mime)) mime = "application/octet-stream";
-            String safePath = path.replace("\\", "/");
-            String url = SupabaseConfig.URL.trim() + "/storage/v1/object/peerpath-files/"
-                    + encodePath(safePath);
-            Request request = authedRequest(url)
-                    .post(RequestBody.create(bytes, MediaType.parse(mime)))
-                    .addHeader("Content-Type", mime)
-                    .build();
-            executeEmpty(request, callback);
-        } catch (Exception e) {
-            callback.onError(messageOf(e));
+
+        // Validate the relative object path before building the Storage URL.
+        String safePath = normalizeStoragePath(path);
+        if (safePath == null) {
+            callback.onError("The upload storage path is invalid. Use a relative path such as user-id/resource.pdf.");
+            return;
         }
+
+        // Reading the selected document can be slow; never do it on the UI thread.
+        HTTP.dispatcher().executorService().execute(() -> {
+            try (InputStream input = resolver.openInputStream(uri)) {
+                if (input == null) {
+                    callback.onError("Android could not open the selected file.");
+                    return;
+                }
+
+                byte[] bytes = readAll(input);
+                if (bytes.length == 0) {
+                    callback.onError("The selected file is empty.");
+                    return;
+                }
+
+                String mime = resolver.getType(uri);
+                if (blank(mime)) {
+                    mime = "application/octet-stream";
+                }
+
+                final String baseUrl = SupabaseConfig.URL.trim().replaceAll("/+$", "");
+
+                String uploadUrl = baseUrl
+                        + "/storage/v1/object/peerpath-files/"
+                        + encodePath(safePath);
+
+                Request request = authedRequest(uploadUrl)
+                        .post(RequestBody.create(bytes, MediaType.parse(mime)))
+                        .addHeader("Content-Type", mime)
+                        .addHeader("x-upsert", "false")
+                        .build();
+
+                executeEmpty(request, callback);
+
+            } catch (Exception e) {
+                callback.onError(messageOf(e));
+            }
+        });
     }
 
     // -------------------- Leaderboard RPC --------------------
@@ -1249,11 +1653,36 @@ public final class SupabaseApi {
         return encode(value).replace("%25", "%");
     }
 
+    /** Returns a safe relative Storage object path, or null when invalid. */
+    private static String normalizeStoragePath(String path) {
+        if (blank(path)) return null;
+        String value = path.trim();
+        if (value.startsWith("/") || value.endsWith("/")
+                || value.indexOf('\\') >= 0
+                || value.indexOf('?') >= 0 || value.indexOf('#') >= 0) {
+            return null;
+        }
+        String[] segments = value.split("/", -1);
+        StringBuilder normalized = new StringBuilder();
+        for (String segment : segments) {
+            if (segment.isEmpty() || ".".equals(segment) || "..".equals(segment)) return null;
+            for (int i = 0; i < segment.length(); i++) {
+                if (Character.isISOControl(segment.charAt(i))) return null;
+            }
+            if (normalized.length() > 0) normalized.append('/');
+            normalized.append(segment);
+        }
+        return normalized.length() == 0 ? null : normalized.toString();
+    }
+
+    /** Encodes path segments separately, preserving '/' as the folder separator. */
     private static String encodePath(String path) {
-        String[] parts = path.split("/");
+        String safePath = normalizeStoragePath(path);
+        if (safePath == null) throw new IllegalArgumentException("Invalid Storage object path.");
+        String[] parts = safePath.split("/", -1);
         StringBuilder result = new StringBuilder();
         for (String part : parts) {
-            if (result.length() > 0) result.append("/");
+            if (result.length() > 0) result.append('/');
             result.append(encode(part));
         }
         return result.toString();

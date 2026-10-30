@@ -1,160 +1,211 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/peer_background"
-    android:fillViewport="true">
+    android:background="#F7FAFF"
+    android:fillViewport="true"
+    android:clipToPadding="false">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:paddingStart="20dp"
+        android:paddingTop="18dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="28dp">
 
+        <!-- Back button -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnBack"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
-            android:text="← Back"
-            android:textColor="@color/peer_dark_blue"
-            app:backgroundTint="@color/peer_light_blue"
-            app:cornerRadius="14dp"
+            android:minWidth="100dp"
+            android:text="Back"
+            android:textAllCaps="false"
+            android:textColor="#082B6F"
+            app:backgroundTint="#EAF3FF"
+            app:strokeColor="#C9DCF8"
+            app:strokeWidth="1dp"
+            app:cornerRadius="12dp"
             app:elevation="0dp" />
 
+        <!-- Screen heading -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="22dp"
             android:text="Request a session"
-            android:textColor="@color/peer_navy"
-            android:textSize="28sp"
+            android:textColor="#061F52"
+            android:textSize="27sp"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Choose a subject and a suitable time. Your tutor can then respond to your request."
-            android:textColor="#687386"
-            android:textSize="15sp"
-            android:lineSpacingExtra="3dp" />
+            android:layout_marginTop="7dp"
+            android:lineSpacingExtra="3dp"
+            android:text="Choose a subject, date and time. Your tutor can review your request and respond."
+            android:textColor="#5F6F86"
+            android:textSize="14sp" />
 
+        <!-- Form card -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:background="@android:color/white"
-            android:elevation="3dp"
+            android:layout_marginTop="22dp"
+            android:background="@drawable/bg_session_card"
             android:orientation="vertical"
-            android:padding="20dp">
+            android:padding="18dp">
 
+            <!-- Subject -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Subject or module *"
-                android:textColor="@color/peer_navy"
+                android:textColor="#061F52"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/etSubject"
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
+                android:layout_height="52dp"
                 android:layout_marginTop="8dp"
-                android:backgroundTint="@color/peer_blue"
+                android:background="@drawable/bg_session_input"
                 android:hint="e.g. Java programming"
                 android:inputType="textCapSentences"
-                android:paddingHorizontal="12dp"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
                 android:singleLine="true"
-                android:textColor="@color/peer_navy"
-                android:textColorHint="#8793A5" />
+                android:textColor="#061F52"
+                android:textColorHint="#8793A5"
+                android:textSize="15sp" />
 
+            <!-- Date -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="18dp"
                 android:text="Preferred date *"
-                android:textColor="@color/peer_navy"
+                android:textColor="#061F52"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/etDate"
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
+                android:layout_height="52dp"
                 android:layout_marginTop="8dp"
-                android:backgroundTint="@color/peer_blue"
-                android:hint="YYYY-MM-DD"
-                android:inputType="date"
-                android:paddingHorizontal="12dp"
+                android:background="@drawable/bg_session_input"
+                android:clickable="true"
+                android:focusable="false"
+                android:cursorVisible="false"
+                android:hint="Tap to select date"
+                android:inputType="none"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
                 android:singleLine="true"
-                android:textColor="@color/peer_navy"
-                android:textColorHint="#8793A5" />
+                android:textColor="#061F52"
+                android:textColorHint="#8793A5"
+                android:textSize="15sp" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="5dp"
+                android:text="Today or a future date"
+                android:textColor="#5F6F86"
+                android:textSize="12sp" />
+
+            <!-- Time -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
                 android:text="Preferred time *"
-                android:textColor="@color/peer_navy"
+                android:textColor="#061F52"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/etTime"
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
+                android:layout_height="52dp"
                 android:layout_marginTop="8dp"
-                android:backgroundTint="@color/peer_blue"
-                android:hint="HH:MM (24-hour time)"
-                android:inputType="time"
-                android:paddingHorizontal="12dp"
+                android:background="@drawable/bg_session_input"
+                android:clickable="true"
+                android:focusable="false"
+                android:cursorVisible="false"
+                android:hint="Tap to select time"
+                android:inputType="none"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
                 android:singleLine="true"
-                android:textColor="@color/peer_navy"
-                android:textColorHint="#8793A5" />
+                android:textColor="#061F52"
+                android:textColorHint="#8793A5"
+                android:textSize="15sp" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="5dp"
+                android:text="For today, choose a time later than now"
+                android:textColor="#5F6F86"
+                android:textSize="12sp" />
+
+            <!-- Optional message -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
                 android:text="Message to your tutor (optional)"
-                android:textColor="@color/peer_navy"
+                android:textColor="#061F52"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <EditText
                 android:id="@+id/etMessage"
                 android:layout_width="match_parent"
-                android:layout_height="120dp"
+                android:layout_height="112dp"
                 android:layout_marginTop="8dp"
-                android:backgroundTint="@color/peer_blue"
+                android:background="@drawable/bg_session_input"
                 android:gravity="top|start"
                 android:hint="Tell the tutor what you need help with..."
                 android:inputType="textCapSentences|textMultiLine"
-                android:padding="12dp"
-                android:textColor="@color/peer_navy"
-                android:textColorHint="#8793A5" />
+                android:padding="14dp"
+                android:scrollbars="vertical"
+                android:textColor="#061F52"
+                android:textColorHint="#8793A5"
+                android:textSize="15sp" />
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="14dp"
                 android:text="* Required fields"
-                android:textColor="#687386"
+                android:textColor="#5F6F86"
                 android:textSize="12sp" />
 
+            <!-- Submit button -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnRequest"
                 android:layout_width="match_parent"
-                android:layout_height="58dp"
-                android:layout_marginTop="22dp"
+                android:layout_height="54dp"
+                android:layout_marginTop="18dp"
+                android:minHeight="54dp"
                 android:text="Send session request"
                 android:textAllCaps="false"
-                android:textSize="16sp"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
                 android:textStyle="bold"
-                app:backgroundTint="@color/peer_blue"
-                app:cornerRadius="16dp"
-                app:elevation="2dp" />
+                app:backgroundTint="#0D5BE1"
+                app:cornerRadius="14dp"
+                app:rippleColor="#33FFFFFF"
+                app:elevation="1dp" />
 
         </LinearLayout>
-
     </LinearLayout>
-
 </ScrollView>
