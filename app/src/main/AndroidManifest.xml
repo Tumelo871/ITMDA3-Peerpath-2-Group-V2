@@ -19,141 +19,74 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".SponsorActivity"
-            android:exported="false" />
+        <activity android:name=".SponsorActivity" android:exported="false" />
+        <activity android:name=".LearnerAnnouncementsActivity" android:exported="false" />
+        <activity android:name=".CreateAssessmentActivity" android:exported="false" />
+        <activity android:name=".SponsorRequestsActivity" android:exported="false" />
 
-        <activity
-            android:name=".LearnerAnnouncementsActivity"
-            android:exported="false" />
+        <activity android:name=".DashboardActivity" android:exported="false" />
+        <activity android:name=".AdminDashboardActivity" android:exported="false" />
+        <activity android:name=".AdminReviewActivity" android:exported="false" />
+        <activity android:name=".LearnerDashboardActivity" android:exported="false" />
 
+        <!-- Learner assessments -->
+        <activity android:name=".LearnerAssignmentsActivity" android:exported="false" />
+        <activity android:name=".AssessmentDetailsActivity" android:exported="false" />
 
+        <!-- Tutor assessments and marking -->
+        <activity android:name=".TutorSubmissionsActivity" android:exported="false" />
+        <activity android:name=".MarkAssessmentActivity" android:exported="false" />
 
-        <activity
-            android:name=".DashboardActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".AdminDashboardActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".AdminReviewActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".LearnerDashboardActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".TutorDashboardActivity"
-            android:exported="false" />
+        <!-- Tutor dashboard -->
+        <activity android:name=".TutorDashboardActivity" android:exported="false" />
 
         <!-- Authentication -->
-        <activity
-            android:name=".LoginActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".RegisterActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".EditProfileActivity"
-            android:exported="false" />
+        <activity android:name=".LoginActivity" android:exported="false" />
+        <activity android:name=".RegisterActivity" android:exported="false" />
+        <activity android:name=".EditProfileActivity" android:exported="false" />
 
         <!-- Tutor applications and management -->
-        <activity
-            android:name=".BecomeTutorActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".TutorPendingActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".TutorRequestsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".TutorSessionsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".TutorSearchActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".TutorProfileActivity"
-            android:exported="false" />
+        <activity android:name=".BecomeTutorActivity" android:exported="false" />
+        <activity android:name=".TutorPendingActivity" android:exported="false" />
+        <activity android:name=".TutorRequestsActivity" android:exported="false" />
+        <activity android:name=".TutorSessionsActivity" android:exported="false" />
+        <activity android:name=".TutorSearchActivity" android:exported="false" />
+        <activity android:name=".TutorProfileActivity" android:exported="false" />
 
         <!-- Sessions -->
-        <activity
-            android:name=".SessionRequestActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".MySessionsActivity"
-            android:exported="false" />
+        <activity android:name=".SessionRequestActivity" android:exported="false" />
+        <activity android:name=".MySessionsActivity" android:exported="false" />
 
         <!-- Reviews and follow-up messaging -->
-        <activity
-            android:name=".RateTutorActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".WriteReviewActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".MyReviewsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".ReviewFollowupInboxActivity"
-            android:exported="false" />
-
+        <activity android:name=".RateTutorActivity" android:exported="false" />
+        <activity android:name=".WriteReviewActivity" android:exported="false" />
+        <activity android:name=".MyReviewsActivity" android:exported="false" />
+        <activity android:name=".ReviewFollowupInboxActivity" android:exported="false" />
         <activity
             android:name=".ReviewFollowupChatActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
         <!-- Messages -->
-        <activity
-            android:name=".MessagesActivity"
-            android:exported="false" />
-
+        <activity android:name=".MessagesActivity" android:exported="false" />
         <activity
             android:name=".ChatActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
         <!-- Learning resources and materials -->
-        <activity
-            android:name=".MaterialsActivity"
-            android:exported="false" />
-
+        <activity android:name=".MaterialsActivity" android:exported="false" />
         <activity
             android:name="com.example.peerpath.ui.resources.ResourceRepositoryActivity"
             android:exported="false" />
 
         <!-- Notifications and gamification -->
-        <activity
-            android:name=".NotificationActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".LeaderboardActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".BadgesActivity"
-            android:exported="false" />
+        <activity android:name=".NotificationActivity" android:exported="false" />
+        <activity android:name=".LeaderboardActivity" android:exported="false" />
+        <activity android:name=".BadgesActivity" android:exported="false" />
 
         <!-- Tutor announcements -->
-        <activity
-            android:name=".AnnounceActivity"
-            android:exported="false" />
+        <activity android:name=".AnnounceActivity" android:exported="false" />
 
     </application>
 

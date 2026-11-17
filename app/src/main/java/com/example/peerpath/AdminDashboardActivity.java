@@ -42,10 +42,13 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
     public static final String SCREEN_REVIEWS = "reviews";
     public static final String SCREEN_SPONSORS = "sponsors";
 
+    public static final String SCREEN_SPONSOR_LINKS = "sponsor_links";
+
     private LinearLayout content;
     private TextView title, status;
     private ProgressBar progress;
-    private Button applicationsButton, usersButton, reviewsButton, materialsButton, sponsorApplicationsButton;
+    private Button applicationsButton, usersButton, reviewsButton,
+            materialsButton, sponsorApplicationsButton, sponsorLinksButton;
     private boolean requestInProgress = false;
     private boolean logoutInProgress = false;
     private String currentScreen = SCREEN_APPLICATIONS;
@@ -87,6 +90,19 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
                     ? new android.view.ViewGroup.LayoutParams(-1, -2) : oldParams;
             nav.addView(sponsorApplicationsButton, Math.min(index + 1, nav.getChildCount()), newParams);
             sponsorApplicationsButton.setOnClickListener(v -> loadSponsorApplications());
+
+            // Add Sponsor–Learner Links as a separate admin section.
+            sponsorLinksButton = new Button(this);
+            sponsorLinksButton.setText("Sponsor–Learner Links");
+            sponsorLinksButton.setAllCaps(false);
+            styleButton(sponsorLinksButton);
+            android.view.ViewGroup.LayoutParams linkParams =
+                    applicationsButton.getLayoutParams() == null
+                            ? new android.view.ViewGroup.LayoutParams(-1, -2)
+                            : applicationsButton.getLayoutParams();
+            nav.addView(sponsorLinksButton,
+                    Math.min(index + 2, nav.getChildCount()), linkParams);
+            sponsorLinksButton.setOnClickListener(v -> loadSponsorLinks());
         }
 
         if (applicationsButton != null) applicationsButton.setOnClickListener(v -> loadApplications());
@@ -112,6 +128,7 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
             if (SCREEN_USERS.equals(currentScreen)) loadUsers();
             else if (SCREEN_REVIEWS.equals(currentScreen)) loadNegativeReviews();
             else if (SCREEN_SPONSORS.equals(currentScreen)) loadSponsorApplications();
+            else if (SCREEN_SPONSOR_LINKS.equals(currentScreen)) loadSponsorLinks();
             else loadApplications();
         }
     }
@@ -261,6 +278,389 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
                                 }
                             });
                 }).show();
+    }
+
+
+
+// ============================================================
+// SPONSOR–LEARNER LINK MANAGEMENT
+// ============================================================
+
+    private void loadSponsorLinks() {
+
+        currentScreen = SCREEN_SPONSOR_LINKS;
+
+        setSection("Sponsor–Learner Links");
+
+        if (requestInProgress) return;
+
+        setLoading(true, "Loading sponsor–learner requests…");
+
+        content.removeAllViews();
+
+        SupabaseApi.getSponsorRequests(new SupabaseApi.JsonCallback() {
+
+            @Override
+            public void onSuccess(JSONArray data) {
+
+                runOnUiThread(() -> {
+
+                    if (isFinishing() || isDestroyed()) return;
+
+                    setLoading(false, "");
+                    content.removeAllViews();
+
+                    int pendingCount = 0;
+                    int activeCount = 0;
+                    int otherCount = 0;
+
+                    if (data != null) {
+
+                        for (int i = 0; i < data.length(); i++) {
+
+                            JSONObject request = data.optJSONObject(i);
+
+                            if (request == null) continue;
+
+                            String requestStatus =
+                                    first(request, "request_status", "status");
+
+                            String activeLinkId =
+                                    first(request, "active_link_id");
+
+                            if (isPending(requestStatus)) {
+
+                                addSponsorLinkCard(request, true);
+                                pendingCount++;
+
+                            } else if (!activeLinkId.isEmpty()
+                                    && ("approved".equalsIgnoreCase(requestStatus)
+                                    || "active".equalsIgnoreCase(requestStatus))) {
+
+                                addSponsorLinkCard(request, false);
+                                activeCount++;
+
+                            } else {
+
+                                otherCount++;
+                            }
+                        }
+                    }
+
+                    status.setText(
+                            "Pending requests: " + pendingCount
+                                    + " | Active sponsorships: " + activeCount
+                    );
+
+                    if (pendingCount == 0 && activeCount == 0) {
+
+                        addMessage(
+                                "There are currently no pending sponsor requests "
+                                        + "or active sponsorship links."
+                        );
+                    }
+
+                    if (otherCount > 0) {
+
+                        addLine(
+                                content,
+                                "Other reviewed requests: " + otherCount
+                        );
+                    }
+                });
+            }
+
+            @Override
+            public void onError(String message) {
+
+                runOnUiThread(() -> {
+
+                    setLoading(false, "Could not load sponsor–learner links.");
+
+                    showError(
+                            "Could not retrieve sponsor–learner requests.\n\n"
+                                    + message
+                    );
+                });
+            }
+        });
+    }
+
+
+// ------------------------------------------------------------
+// DISPLAY INDIVIDUAL SPONSOR REQUESTS
+// ------------------------------------------------------------
+
+    private void addSponsorLinkCard(JSONObject request, boolean pending) {
+
+        String requestId =
+                first(request, "request_id", "id");
+
+        String sponsorName =
+                first(request, "sponsor_name");
+
+        String learnerName =
+                first(request, "learner_name");
+
+        String requestStatus =
+                first(request, "request_status", "status");
+
+        String requestedAt =
+                first(request, "requested_at");
+
+        String reviewedAt =
+                first(request, "reviewed_at");
+
+        String reviewReason =
+                first(request, "review_reason");
+
+        String activeLinkId =
+                first(request, "active_link_id");
+
+        LinearLayout item = card();
+
+        item.addView(text(
+                pending
+                        ? "Pending Sponsor–Learner Request"
+                        : "Active Sponsorship",
+                18,
+                0xFF082B6F,
+                true
+        ));
+
+        addLine(
+                item,
+                "Sponsor: " +
+                        (sponsorName.isEmpty()
+                                ? "Unknown sponsor"
+                                : sponsorName)
+        );
+
+        addLine(
+                item,
+                "Learner: " +
+                        (learnerName.isEmpty()
+                                ? "Unknown learner"
+                                : learnerName)
+        );
+
+        addLine(
+                item,
+                "Status: " +
+                        (requestStatus.isEmpty()
+                                ? "Unknown"
+                                : requestStatus)
+        );
+
+        if (!requestedAt.isEmpty()) {
+            addLine(item, "Request date: " + requestedAt);
+        }
+
+        if (!reviewedAt.isEmpty()) {
+            addLine(item, "Reviewed date: " + reviewedAt);
+        }
+
+        if (!reviewReason.isEmpty()) {
+            addLine(item, "Review reason: " + reviewReason);
+        }
+
+        if (pending) {
+
+            addLine(
+                    item,
+                    "The learner must approve this request before "
+                            + "the sponsorship becomes active."
+            );
+
+            if (requestId.isEmpty()) {
+
+                addLine(
+                        item,
+                        "Cannot reject: request ID was not returned."
+                );
+
+            } else {
+
+                Button rejectButton = button("Reject Request");
+
+                rejectButton.setOnClickListener(v ->
+                        showSponsorLinkReasonDialog(requestId, false)
+                );
+
+                item.addView(rejectButton);
+            }
+
+        } else {
+
+            if (activeLinkId.isEmpty()) {
+
+                addLine(
+                        item,
+                        "Active sponsorship ID was not returned. "
+                                + "Revocation is unavailable."
+                );
+
+            } else {
+
+                Button revokeButton = button("Revoke Sponsorship");
+
+                revokeButton.setOnClickListener(v ->
+                        showSponsorLinkReasonDialog(activeLinkId, true)
+                );
+
+                item.addView(revokeButton);
+            }
+        }
+
+        content.addView(item);
+    }
+
+
+// ------------------------------------------------------------
+// ASK ADMINISTRATOR FOR A REASON
+// ------------------------------------------------------------
+
+    private void showSponsorLinkReasonDialog(
+            String id,
+            boolean revoke
+    ) {
+
+        EditText reasonInput = new EditText(this);
+
+        reasonInput.setHint(
+                revoke
+                        ? "Reason for revoking sponsorship"
+                        : "Reason for rejecting request"
+        );
+
+        reasonInput.setInputType(
+                InputType.TYPE_CLASS_TEXT
+                        | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        );
+
+        reasonInput.setMinLines(2);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+
+                .setTitle(
+                        revoke
+                                ? "Revoke Sponsorship"
+                                : "Reject Sponsor Request"
+                )
+
+                .setMessage(
+                        revoke
+                                ? "Are you sure you want to revoke this active sponsorship?"
+                                : "Are you sure you want to reject this sponsor request?"
+                )
+
+                .setView(reasonInput)
+
+                .setNegativeButton("Cancel", null)
+
+                .setPositiveButton(
+                        revoke ? "Revoke" : "Reject",
+                        null
+                )
+
+                .create();
+
+        dialog.setOnShowListener(ignored -> {
+
+            Button confirm = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+
+            confirm.setOnClickListener(v -> {
+
+                String reason =
+                        reasonInput.getText().toString().trim();
+
+                if (reason.isEmpty()) {
+
+                    reasonInput.setError("A reason is required.");
+                    return;
+                }
+
+                dialog.dismiss();
+
+                submitSponsorLinkDecision(
+                        id,
+                        reason,
+                        revoke
+                );
+            });
+        });
+
+        dialog.show();
+    }
+
+
+// ------------------------------------------------------------
+// SUBMIT REJECTION OR REVOCATION TO SUPABASE
+// ------------------------------------------------------------
+
+    private void submitSponsorLinkDecision(
+            String id,
+            String reason,
+            boolean revoke
+    ) {
+
+        setLoading(
+                true,
+                revoke
+                        ? "Revoking sponsorship…"
+                        : "Rejecting sponsor request…"
+        );
+
+        SupabaseApi.EmptyCallback callback =
+                new SupabaseApi.EmptyCallback() {
+
+                    @Override
+                    public void onSuccess() {
+
+                        runOnUiThread(() -> {
+
+                            setLoading(false, "");
+
+                            Toast.makeText(
+                                    AdminDashboardActivity.this,
+                                    revoke
+                                            ? "Sponsorship successfully revoked."
+                                            : "Sponsor request successfully rejected.",
+                                    Toast.LENGTH_LONG
+                            ).show();
+
+                            loadSponsorLinks();
+                        });
+                    }
+
+                    @Override
+                    public void onError(String message) {
+
+                        runOnUiThread(() -> {
+
+                            setLoading(false, "Sponsor link action failed.");
+
+                            showError(message);
+                        });
+                    }
+                };
+
+        if (revoke) {
+
+            SupabaseApi.revokeSponsorLink(
+                    id,
+                    reason,
+                    callback
+            );
+
+        } else {
+
+            SupabaseApi.rejectSponsorRequest(
+                    id,
+                    reason,
+                    callback
+            );
+        }
     }
 
     private void openTutorMaterials() {
@@ -762,6 +1162,7 @@ public class AdminDashboardActivity extends RoleDashboardBaseActivity {
         if (applicationsButton != null) applicationsButton.setEnabled(!loading);
         if (usersButton != null) usersButton.setEnabled(!loading);
         if (sponsorApplicationsButton != null) sponsorApplicationsButton.setEnabled(!loading);
+        if (sponsorLinksButton != null) sponsorLinksButton.setEnabled(!loading);
         if (reviewsButton != null) reviewsButton.setEnabled(!loading);
         if (materialsButton != null) materialsButton.setEnabled(!loading);
     }

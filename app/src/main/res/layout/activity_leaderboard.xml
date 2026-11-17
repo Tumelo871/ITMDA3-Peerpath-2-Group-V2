@@ -14,7 +14,7 @@
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="8dp"
-        android:paddingEnd="16dp">
+        android:paddingEnd="12dp">
 
         <ImageButton
             android:id="@+id/btnBack"
@@ -27,12 +27,28 @@
             app:tint="@color/white" />
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
+            android:layout_weight="1"
             android:text="Leaderboard"
             android:textColor="@color/white"
             android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btnRefreshLeaderboard"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="Refresh"
+            android:textColor="@color/white"
+            android:textSize="14sp"
             android:textStyle="bold" />
 
     </LinearLayout>
@@ -94,7 +110,7 @@
                 android:indeterminate="true"
                 android:visibility="gone" />
 
-            <!-- Loading, error, and status messages -->
+            <!-- Loading and error messages -->
             <TextView
                 android:id="@+id/tvLeaderboardStatus"
                 android:layout_width="match_parent"
@@ -106,7 +122,7 @@
                 android:textSize="15sp"
                 android:visibility="gone" />
 
-            <!-- Compatibility with the previous layout -->
+            <!-- Compatibility with previous layout -->
             <TextView
                 android:id="@+id/tvEmptyLeaderboard"
                 android:layout_width="match_parent"
@@ -118,7 +134,29 @@
                 android:textSize="15sp"
                 android:visibility="gone" />
 
-            <!-- Java adds leaderboard rows here -->
+            <!-- Top three leaderboard members -->
+            <LinearLayout
+                android:id="@+id/podiumContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="20dp"
+                android:gravity="bottom"
+                android:orientation="horizontal"
+                android:visibility="gone" />
+
+            <!-- Remaining rankings heading -->
+            <TextView
+                android:id="@+id/tvLeaderboardListHeading"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="10dp"
+                android:text="Leaderboard rankings"
+                android:textColor="@color/text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <!-- Java dynamically adds leaderboard rows here -->
             <LinearLayout
                 android:id="@+id/leaderboardContainer"
                 android:layout_width="match_parent"

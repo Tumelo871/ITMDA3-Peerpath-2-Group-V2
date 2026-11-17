@@ -1,6 +1,8 @@
 
 package com.example.peerpath;
 
+import com.example.peerpath.ui.resources.ResourceRepositoryActivity;
+
 public class LearnerDashboardActivity extends RoleDashboardBaseActivity {
 
     @Override
@@ -27,11 +29,9 @@ public class LearnerDashboardActivity extends RoleDashboardBaseActivity {
         hide("cardMyMaterials");
         hide("cardAnnounce");
         hide("cardAdminReview");
-
-        // Remove the duplicate Learning Materials card.
         hide("cardMaterials");
 
-        // Learner dashboard navigation.
+        // Learner navigation.
         wire("cardFindTutor", TutorSearchActivity.class);
         wire("cardMySessions", MySessionsActivity.class);
         wire("cardMyReviews", MyReviewsActivity.class);
@@ -40,13 +40,21 @@ public class LearnerDashboardActivity extends RoleDashboardBaseActivity {
         wire("cardMessages", MessagesActivity.class);
         wire("cardLeaderboard", LeaderboardActivity.class);
         wire("cardBadges", BadgesActivity.class);
+        wire("cardSponsorRequests", SponsorRequestsActivity.class);
 
-        // Single destination for all shared learning resources.
-        wire("cardResources",
-                com.example.peerpath.ui.resources.ResourceRepositoryActivity.class);
+        // Learning resources.
+        wire("cardResources", ResourceRepositoryActivity.class);
 
+        // Notifications.
         wire("btnNotifications", NotificationActivity.class);
+
+        // Tutor application.
         wire("cardBecomeTutor", BecomeTutorActivity.class);
+
+        // Announcements.
         wire("cardAnnouncements", LearnerAnnouncementsActivity.class);
+
+        // Assignments and tests.
+        wire("cardAssignments", LearnerAssignmentsActivity.class);
     }
 }

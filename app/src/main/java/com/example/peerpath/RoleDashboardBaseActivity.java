@@ -1,4 +1,3 @@
-
 package com.example.peerpath;
 
 import android.content.Intent;
@@ -15,6 +14,9 @@ import org.json.JSONObject;
 
 /**
  * Shared session and profile validation for role-specific dashboards.
+ *
+ * This class validates the signed-in user's profile before allowing a
+ * role-specific dashboard to continue.
  */
 public abstract class RoleDashboardBaseActivity extends AppCompatActivity {
 
@@ -30,7 +32,7 @@ public abstract class RoleDashboardBaseActivity extends AppCompatActivity {
 
         SupabaseApi.init(getApplicationContext());
 
-        // Redirect signed-out users to login.
+        // A user without a valid saved session must sign in again.
         if (!SupabaseApi.isLoggedIn()) {
             redirect(LoginActivity.class);
             return;
@@ -38,7 +40,7 @@ public abstract class RoleDashboardBaseActivity extends AppCompatActivity {
 
         setContentView(layoutId());
 
-        // Wire common navigation actions.
+        // Common navigation. Screens without these IDs are simply skipped.
         wire("btnLogout", null);
         wire("btnBack", DashboardActivity.class);
 
@@ -50,7 +52,7 @@ public abstract class RoleDashboardBaseActivity extends AppCompatActivity {
             return;
         }
 
-        // Load the current user's profile from Supabase.
+        // Load the profile from Supabase before rendering role-specific actions.
         SupabaseApi.getProfile(uid, new SupabaseApi.ObjectCallback() {
             @Override
             public void onSuccess(JSONObject profile) {
@@ -60,6 +62,8 @@ public abstract class RoleDashboardBaseActivity extends AppCompatActivity {
             @Override
             public void onError(String message) {
                 runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+
                     Toast.makeText(
                             RoleDashboardBaseActivity.this,
                             "Could not load profile: " + message,
@@ -71,9 +75,7 @@ public abstract class RoleDashboardBaseActivity extends AppCompatActivity {
     }
 
     private void checkAndRender(JSONObject profile) {
-        if (isFinishing() || isDestroyed()) {
-            return;
-        }
+        if (isFinishing() || isDestroyed()) return;
 
         if (profile == null) {
             Toast.makeText(
@@ -81,49 +83,43 @@ public abstract class RoleDashboardBaseActivity extends AppCompatActivity {
                     "Your profile could not be loaded.",
                     Toast.LENGTH_LONG
             ).show();
-
             redirect(LoginActivity.class);
             return;
         }
 
         String role = profile.optString("role", "").trim();
-        String status = profile.optString(
+        String verificationStatus = profile.optString(
                 "verification_status",
                 "unverified"
         ).trim();
 
-        // Verify that the current user belongs on this dashboard.
+        // Do not allow a user to open another role's dashboard.
         if (!requiredRole().equalsIgnoreCase(role)) {
             redirect(DashboardActivity.class);
             return;
         }
 
-        // Unverified tutors must not access the verified tutor dashboard.
+        // Only verified tutors may enter the verified tutor dashboard.
         if (requiresVerifiedTutor()
-                && !"verified".equalsIgnoreCase(status)) {
+                && !"verified".equalsIgnoreCase(verificationStatus)) {
             redirect(TutorPendingActivity.class);
             return;
         }
 
         TextView name = findViewById(R.id.tvDashboardName);
-
         if (name != null) {
-            name.setText(
-                    "Hello, "
-                            + clean(profile.optString(
-                            "full_name",
-                            "PeerPath User"
-                    ))
-                            + " 👋"
-            );
+            name.setText("Hello, " + clean(profile.optString(
+                    "full_name",
+                    "PeerPath User"
+            )) + " 👋");
         }
 
-        // Wire role-specific actions only after validation.
+        // Run role-specific setup only after the profile has passed validation.
         wireRoleActions();
     }
 
     protected void wireRoleActions() {
-        // Override this in each role-specific dashboard.
+        // Override in each role-specific dashboard.
     }
 
     protected void wire(String idName, Class<?> target) {
@@ -134,10 +130,7 @@ public abstract class RoleDashboardBaseActivity extends AppCompatActivity {
         );
 
         View view = id == 0 ? null : findViewById(id);
-
-        if (view == null) {
-            return;
-        }
+        if (view == null) return;
 
         view.setOnClickListener(v -> {
             if ("btnLogout".equals(idName)) {
@@ -160,7 +153,6 @@ public abstract class RoleDashboardBaseActivity extends AppCompatActivity {
         );
 
         View view = id == 0 ? null : findViewById(id);
-
         if (view != null) {
             view.setVisibility(View.GONE);
         }
@@ -168,14 +160,10 @@ public abstract class RoleDashboardBaseActivity extends AppCompatActivity {
 
     protected void wireId(int id, Class<?> target) {
         View view = findViewById(id);
-
         if (view != null && target != null) {
-            view.setOnClickListener(v ->
-                    startActivity(new Intent(
-                            RoleDashboardBaseActivity.this,
-                            target
-                    ))
-            );
+            view.setOnClickListener(v -> startActivity(
+                    new Intent(RoleDashboardBaseActivity.this, target)
+            ));
         }
     }
 
@@ -185,18 +173,15 @@ public abstract class RoleDashboardBaseActivity extends AppCompatActivity {
                 || "null".equalsIgnoreCase(value.trim())) {
             return "PeerPath User";
         }
-
         return value.trim();
     }
 
     private void redirect(Class<?> destination) {
         Intent intent = new Intent(this, destination);
-
         intent.setFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK
                         | Intent.FLAG_ACTIVITY_CLEAR_TASK
         );
-
         startActivity(intent);
         finish();
     }

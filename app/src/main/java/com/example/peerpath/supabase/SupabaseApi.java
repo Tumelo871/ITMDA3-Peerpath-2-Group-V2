@@ -1,3 +1,4 @@
+
 package com.example.peerpath.supabase;
 
 import android.content.Context;
@@ -2126,6 +2127,315 @@ public final class SupabaseApi {
         } catch (Exception e) { callback.onError(messageOf(e)); return; }
         executeEmpty(request, callback);
     }
+
+
+
+
+
+
+
+    /**
+     * Learner-only RPC: decline a sponsor request addressed to the signed-in learner.
+     * Supabase independently verifies that auth.uid() is the learner on the request.
+     */
+    public static void declineSponsorRequest(
+            String requestId, String reason, EmptyCallback callback) {
+        if (callback == null) return;
+        if (!isLoggedIn()) {
+            callback.onError("Please sign in first.");
+            return;
+        }
+        if (blank(requestId)) {
+            callback.onError("Request ID is missing.");
+            return;
+        }
+
+        JSONObject body = new JSONObject();
+        try {
+            body.put("p_request_id", requestId.trim());
+            body.put("p_reason", blank(reason) ? "Declined by learner" : reason.trim());
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the decline request.");
+            return;
+        }
+
+        Request request;
+        try {
+            request = authedRequest(SupabaseConfig.URL.trim()
+                    + "/rest/v1/rpc/peerpath_sponsor_decline")
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+        } catch (Exception e) {
+            callback.onError(messageOf(e));
+            return;
+        }
+        executeEmpty(request, callback);
+    }
+
+
+
+    public static void createAssignment(
+            String sessionId,
+            String learnerId,
+            String title,
+            String subject,
+            String instructions,
+            String dueAt,
+            double maxScore,
+            String assessmentType,
+            boolean allowOnlineAnswers,
+            boolean allowFileSubmission,
+            EmptyCallback callback) {
+
+        if (callback == null) return;
+
+        String tutorId = userId();
+
+        if (blank(tutorId) || blank(token())) {
+            callback.onError("Please sign in again.");
+            return;
+        }
+
+        if (blank(sessionId) || blank(learnerId)
+                || blank(title) || blank(subject)) {
+            callback.onError("Select a learner and complete the required fields.");
+            return;
+        }
+
+        if (maxScore <= 0) {
+            callback.onError("Maximum marks must be greater than zero.");
+            return;
+        }
+
+        if (!"multiple_choice".equals(assessmentType)
+                && !"written".equals(assessmentType)
+                && !"document".equals(assessmentType)
+                && !"mixed".equals(assessmentType)) {
+            callback.onError("Choose a valid assessment type.");
+            return;
+        }
+
+        if (!allowOnlineAnswers && !allowFileSubmission) {
+            callback.onError("Enable online answers or file submissions.");
+            return;
+        }
+
+        JSONObject row = new JSONObject();
+
+        try {
+            row.put("session_id", sessionId.trim());
+            row.put("tutor_id", tutorId);
+            row.put("learner_id", learnerId.trim());
+            row.put("title", title.trim());
+            row.put("subject", subject.trim());
+            row.put("instructions",
+                    instructions == null ? "" : instructions.trim());
+            row.put("due_at",
+                    blank(dueAt) ? JSONObject.NULL : dueAt.trim());
+            row.put("max_score", maxScore);
+            row.put("assessment_type", assessmentType);
+            row.put("instructions_format", "text");
+            row.put("allow_online_answers", allowOnlineAnswers);
+            row.put("allow_file_submission", allowFileSubmission);
+            row.put("max_attempts", 1);
+            row.put("status", "assigned");
+            row.put("published_at", java.time.Instant.now().toString());
+
+        } catch (JSONException e) {
+            callback.onError("Could not prepare the assessment.");
+            return;
+        }
+
+        dbPost("peerpath_assignments", row, callback);
+    }
+
+
+
+
+    public static void createAssessmentWithQuestions(
+            JSONObject assessment,
+            ObjectCallback callback) {
+
+        if (callback == null) return;
+
+        if (assessment == null) {
+            callback.onError("Assessment information is missing.");
+            return;
+        }
+
+        if (!isConfigured() || !isLoggedIn()) {
+            callback.onError("Please sign in again.");
+            return;
+        }
+
+        Request request;
+
+        try {
+            // The PostgreSQL function expects one parameter:
+            // p_assessment (jsonb).
+            JSONObject body = new JSONObject();
+            body.put("p_assessment", assessment);
+
+            request = authedRequest(
+                    SupabaseConfig.URL.trim()
+                            + "/rest/v1/rpc/peerpath_create_assessment_with_questions")
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+
+        } catch (Exception e) {
+            callback.onError(
+                    "Could not prepare assessment request: " + messageOf(e)
+            );
+            return;
+        }
+
+        executeObject(request, callback);
+    }
+
+
+
+    public static void getMyAssignments(JsonCallback callback) {
+        if (callback == null) return;
+
+        String learnerId = userId();
+
+        if (blank(learnerId) || !isLoggedIn()) {
+            callback.onError("Please sign in again.");
+            return;
+        }
+
+        String query =
+                "learner_id=eq." + encode(learnerId)
+                        + "&status=neq.cancelled"
+                        + "&select=id,title,subject,instructions,due_at,"
+                        + "max_score,assessment_type,allow_online_answers,"
+                        + "allow_file_submission,max_attempts,created_at,"
+                        + "peerpath_assignment_submissions("
+                        + "id,status,submitted_at,attempt_number,"
+                        + "score,graded_total,graded_max_score,"
+                        + "marked_at,tutor_feedback)"
+                        + "&peerpath_assignment_submissions.learner_id=eq."
+                        + encode(learnerId)
+                        + "&peerpath_assignment_submissions.order=submitted_at.desc"
+                        + "&order=created_at.desc";
+
+        dbGet("peerpath_assignments", query, callback);
+    }
+
+
+
+
+
+    public static void getAssessmentQuestions(
+            String assignmentId,
+            JsonCallback callback) {
+
+        if (callback == null) return;
+
+        if (blank(assignmentId)) {
+            callback.onError("Assessment ID is missing.");
+            return;
+        }
+
+        String query =
+                "assignment_id=eq." + encode(assignmentId)
+                        + "&select=id,question_number,question_type,"
+                        + "question_text,marks,is_required,display_order,"
+                        + "peerpath_assignment_options(id,option_label,option_text,display_order)"
+                        + "&order=display_order.asc";
+
+        dbGet("peerpath_assignment_questions", query, callback);
+    }
+
+    public static void submitOnlineAssessment(
+            JSONObject submission,
+            ObjectCallback callback) {
+
+        if (callback == null) return;
+
+        if (submission == null) {
+            callback.onError("Submission information is missing.");
+            return;
+        }
+
+        if (!isLoggedIn()) {
+            callback.onError("Please sign in again.");
+            return;
+        }
+
+        try {
+            JSONObject body = new JSONObject();
+            body.put("p_submission", submission);
+
+            Request request = authedRequest(
+                    SupabaseConfig.URL.trim()
+                            + "/rest/v1/rpc/peerpath_submit_online_assessment")
+                    .post(RequestBody.create(body.toString(), JSON))
+                    .build();
+
+            executeObject(request, callback);
+
+        } catch (Exception e) {
+            callback.onError(
+                    "Could not prepare submission: " + messageOf(e)
+            );
+        }
+    }
+
+
+
+    public static void getTutorAssessmentSubmissions(JsonCallback callback) {
+
+        if (callback == null) return;
+
+        String tutorId = userId();
+
+        if (!isLoggedIn() || tutorId == null || tutorId.trim().isEmpty()) {
+            callback.onError("Please sign in again.");
+            return;
+        }
+
+        String query =
+                "select=id,assignment_id,learner_id,submitted_at,"
+                        + "status,attempt_number,score,graded_total,"
+                        + "graded_max_score,tutor_feedback,marked_at,"
+                        + "attachment_path,"
+                        + "peerpath_assignments!inner("
+                        + "title,subject,max_score,tutor_id),"
+                        + "learner:profiles!peerpath_assignment_submissions_learner_id_fkey("
+                        + "full_name,email)"
+                        + "&peerpath_assignments.tutor_id=eq."
+                        + encode(tutorId)
+                        + "&order=submitted_at.desc";
+
+        dbGet("peerpath_assignment_submissions", query, callback);
+    }
+
+
+    /**
+     * Loads assessment results released to the signed-in sponsor.
+     * Database RLS must enforce active sponsorship and result-release permissions.
+     */
+    public static void getSponsorReleasedResults(JsonCallback callback) {
+        if (callback == null) return;
+
+        if (!isLoggedIn()) {
+            callback.onError("Please sign in first.");
+            return;
+        }
+
+        String query =
+                "select=id,assignment_id,learner_id,submitted_at,score,"
+                        + "tutor_feedback,marked_at,graded_total,graded_max_score,"
+                        + "attempt_number,peerpath_assignments(title,subject)"
+                        + "&sponsor_results_released=eq.true"
+                        + "&order=marked_at.desc";
+
+        dbGet("peerpath_assignment_submissions", query, callback);
+    }
+
+
+
 
 
 

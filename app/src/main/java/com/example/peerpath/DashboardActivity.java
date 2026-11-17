@@ -56,6 +56,7 @@ public class DashboardActivity extends AppCompatActivity {
         });
     }
 
+
     private void route(JSONObject profile) {
         if (isFinishing() || isDestroyed() || routing) return;
 
@@ -74,27 +75,48 @@ public class DashboardActivity extends AppCompatActivity {
         ).trim();
 
         if ("learner".equalsIgnoreCase(role)) {
+
             go(LearnerDashboardActivity.class);
 
         } else if ("tutor".equalsIgnoreCase(role)) {
+
             if ("verified".equalsIgnoreCase(status)) {
                 go(TutorDashboardActivity.class);
             } else {
                 go(TutorPendingActivity.class);
             }
 
+        } else if ("sponsor".equalsIgnoreCase(role)) {
+
+            if ("verified".equalsIgnoreCase(status)) {
+                go(SponsorActivity.class);
+            } else {
+                Toast.makeText(
+                        this,
+                        "Your sponsor application is still pending approval.",
+                        Toast.LENGTH_LONG
+                ).show();
+            }
+
         } else if ("admin".equalsIgnoreCase(role)) {
+
             go(AdminDashboardActivity.class);
 
         } else {
+
+            android.util.Log.e(
+                    "PeerPathRouting",
+                    "Unknown role: [" + role + "], status: [" + status + "]"
+            );
+
             Toast.makeText(
                     this,
-                    "Your account role is not configured. "
-                            + "Please contact support.",
+                    "Your account role is not configured. Please contact support.",
                     Toast.LENGTH_LONG
             ).show();
         }
     }
+
 
     private void go(Class<?> destination) {
         if (routing || isFinishing() || isDestroyed()) return;

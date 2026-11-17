@@ -30,7 +30,6 @@ public class TutorDashboardActivity extends RoleDashboardBaseActivity {
         wire("cardMessages", MessagesActivity.class);
         wire("cardReviewFollowups", ReviewFollowupInboxActivity.class);
 
-        // Tutor's own learning materials
         View myMaterials = findViewById(R.id.cardMyMaterials);
 
         if (myMaterials != null) {
@@ -44,10 +43,14 @@ public class TutorDashboardActivity extends RoleDashboardBaseActivity {
             });
         }
 
-        // Shared learning repository
         wire("cardResources", MaterialsActivity.class);
-
         wire("btnNotifications", NotificationActivity.class);
         wire("cardAnnounce", AnnounceActivity.class);
+
+        // Create tests and assignments
+        wire("cardAssignments", CreateAssessmentActivity.class);
+
+        // View learner submissions, marks and results
+        wire("cardTutorResults", TutorSubmissionsActivity.class);
     }
 }

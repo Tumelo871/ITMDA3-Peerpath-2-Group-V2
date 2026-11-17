@@ -97,6 +97,22 @@ public class LoginActivity extends AppCompatActivity {
     }
 
     private void routeUsingProfile(JSONObject profile) {
+
+        if (profile == null) {
+            Log.e(TAG, "PROFILE IS NULL");
+            denyAndSignOut("Your profile could not be loaded.");
+            return;
+        }
+
+        Log.d(TAG, "========== PEERPATH PROFILE DEBUG ==========");
+        Log.d(TAG, "Saved User ID: " + SupabaseApi.userId());
+        Log.d(TAG, "Saved Email: " + SupabaseApi.userEmail());
+        Log.d(TAG, "Profile ID: " + profile.optString("id"));
+        Log.d(TAG, "Profile Email: " + profile.optString("email"));
+        Log.d(TAG, "Profile Role: [" + profile.optString("role") + "]");
+        Log.d(TAG, "Verification: " + profile.optString("verification_status"));
+        Log.d(TAG, "============================================");
+
         String role = lower(profile.optString("role", ""));
         String requestedRole = lower(profile.optString("requested_role", ""));
         String verification = lower(profile.optString("verification_status", ""));
